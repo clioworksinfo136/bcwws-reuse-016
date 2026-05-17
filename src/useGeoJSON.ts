@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { WaterGeoJSON } from './types';
 
-const API_URL = 'https://drd977abuk.execute-api.us-east-1.amazonaws.com/test/getData';
+const API_URL = 'https://8l0teqiare.execute-api.us-east-1.amazonaws.com/test/getData';
 
 export function useGeoJSON() {
   const [data, setData] = useState<WaterGeoJSON | null>(null);
