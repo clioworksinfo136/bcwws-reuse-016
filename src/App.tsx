@@ -269,7 +269,38 @@ function App() {
     { value: 'water', label: 'Water' },
     { value: 'wastewater', label: 'Wastewater' },
     { value: 'stormwater', label: 'Stormwater' },
-    { value: 'pavement', label: 'Pavement' }
+    { value: 'pavement', label: 'Pavement' },
+    { value: "F&I, Type 'F' Curb and Gutter", label: "F&I, Type 'F' Curb and Gutter" },
+    { value: "F&I, Type 'E' Curb and Gutter", label: "F&I, Type 'E' Curb and Gutter" },
+    { value: "F&I, Type 'D' Curb", label: "F&I, Type 'D' Curb" },
+    { value: 'Remove and Replace Existing Guard Rail', label: 'Remove and Replace Existing Guard Rail' },
+    { value: 'Remove and Replace Existing Chain Link Fence', label: 'Remove and Replace Existing Chain Link Fence' },
+    { value: 'Remove and Replace Existing Aluminum Fence', label: 'Remove and Replace Existing Aluminum Fence' },
+    { value: 'F&I, Stabilized Subgrade', label: 'F&I, Stabilized Subgrade' },
+    { value: 'F&I, Limerock Base', label: 'F&I, Limerock Base' },
+    { value: 'F&I, Asphalt Pavement Restoration', label: 'F&I, Asphalt Pavement Restoration' },
+    { value: 'Mill and Resurface Asphalt Pavement', label: 'Mill and Resurface Asphalt Pavement' },
+    { value: 'Remove and Replace Asphalt Driveway', label: 'Remove and Replace Asphalt Driveway' },
+    { value: 'F&I, Asphalt Walkway', label: 'F&I, Asphalt Walkway' },
+    { value: 'F&I, Concrete Median', label: 'F&I, Concrete Median' },
+    { value: 'F&I, 6 inch Concrete Sidewalk', label: 'F&I, 6 inch Concrete Sidewalk' },
+    { value: 'Remove and Replace Concrete Driveway', label: 'Remove and Replace Concrete Driveway' },
+    { value: 'Remove and Replace Paver Driveway', label: 'Remove and Replace Paver Driveway' },
+    { value: 'F&I, Paver Walkway', label: 'F&I, Paver Walkway' },
+    { value: 'F&I, Concrete Golf Cart Path', label: 'F&I, Concrete Golf Cart Path' },
+    { value: 'F&I, Concrete Golf Cart Path with Rolled Curb', label: 'F&I, Concrete Golf Cart Path with Rolled Curb' },
+    { value: 'Restoration of Green Areas', label: 'Restoration of Green Areas' },
+    { value: 'Existing Minor Utility Adjustment', label: 'Existing Minor Utility Adjustment' },
+    { value: 'Existing Major Utility Adjustment', label: 'Existing Major Utility Adjustment' },
+    { value: 'Remove and Replace Existing Road Sign & Post Assembly', label: 'Remove and Replace Existing Road Sign & Post Assembly' },
+    { value: 'Remove and Replace Existing Mailbox', label: 'Remove and Replace Existing Mailbox' },
+    { value: 'Restoration of Golf Course', label: 'Restoration of Golf Course' },
+    { value: 'Removal and Replacement of Unsuitable Material', label: 'Removal and Replacement of Unsuitable Material' },
+    { value: 'Replace Existing Potable Water Service', label: 'Replace Existing Potable Water Service' },
+    { value: 'Replace Existing Sanitary Sewer Lateral', label: 'Replace Existing Sanitary Sewer Lateral' },
+    { value: 'F&I, Pavement Marking and Striping', label: 'F&I, Pavement Marking and Striping' },
+    { value: 'R&D, Existing Trees', label: 'R&D, Existing Trees' },
+    { value: 'F&I, Florida Number 2 Trees', label: 'F&I, Florida Number 2 Trees' },
   ];
 
   //console.log(AIR_PORTS);
@@ -841,11 +872,33 @@ function App() {
           onChange={handleSelectChange}
         //width="100%"
         >
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
+          {options.map((option) => {
+            const greenValues = [
+              'reuse','water','wastewater','stormwater','pavement',
+              "F&I, Type 'F' Curb and Gutter","F&I, Type 'E' Curb and Gutter",
+              "F&I, Type 'D' Curb",
+              'Remove and Replace Existing Guard Rail',
+              'Remove and Replace Existing Chain Link Fence',
+              'Remove and Replace Existing Aluminum Fence',
+            ];
+            const blueValues = [
+              'F&I, Stabilized Subgrade','F&I, Limerock Base',
+              'F&I, Asphalt Pavement Restoration','Mill and Resurface Asphalt Pavement',
+              'Remove and Replace Asphalt Driveway','F&I, Asphalt Walkway',
+              'F&I, Concrete Median','F&I, 6 inch Concrete Sidewalk',
+              'Remove and Replace Concrete Driveway','Remove and Replace Paver Driveway',
+              'F&I, Paver Walkway','F&I, Concrete Golf Cart Path',
+              'F&I, Concrete Golf Cart Path with Rolled Curb','Restoration of Green Areas',
+            ];
+            const color = greenValues.includes(option.value) ? 'darkgreen'
+              : blueValues.includes(option.value) ? 'darkblue' : undefined;
+            return (
+              <option key={option.value} value={option.value}
+                style={color ? { color } : undefined}>
+                {option.label}
+              </option>
+            );
+          })}
         </SelectField>
 
 
@@ -871,8 +924,11 @@ function App() {
           <option value="joint">Joint</option>
           <option value="90-bend">90-Bend</option>
           <option value="45-bend">45-Bend</option>
-          <option value="11-bend">11-Bend</option>
-          <option value="plug-valve">Plug Valve</option>
+          <option value="22.5-bend">22.5-Bend</option>
+          <option value="11.25-bend">11.25-Bend</option>
+          <option value="24-plug-valve">24-Plug Valve</option>
+          <option value="30-plug-valve">30-Plug Valve</option>
+          <option value="30-line-stop">30 Line Stop</option>
         </select>
         <label style={{ display: 'flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', cursor: 'pointer' }}>
           <input
@@ -1045,11 +1101,42 @@ function App() {
                                   onChange={e => setEditType(e.target.value)}
                                   style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
                                 >
-                                  <option value="reuse">reuse</option>
-                                  <option value="water">water</option>
-                                  <option value="wastewater">wastewater</option>
-                                  <option value="stormwater">stormwater</option>
-                                  <option value="pavement">pavement</option>
+                                  <option value="reuse" style={{ color: 'darkgreen' }}>reuse</option>
+                                  <option value="water" style={{ color: 'darkgreen' }}>water</option>
+                                  <option value="wastewater" style={{ color: 'darkgreen' }}>wastewater</option>
+                                  <option value="stormwater" style={{ color: 'darkgreen' }}>stormwater</option>
+                                  <option value="pavement" style={{ color: 'darkgreen' }}>pavement</option>
+                                  <option value="F&I, Type 'F' Curb and Gutter" style={{ color: 'darkgreen' }}>F&I, Type 'F' Curb and Gutter</option>
+                                  <option value="F&I, Type 'E' Curb and Gutter" style={{ color: 'darkgreen' }}>F&I, Type 'E' Curb and Gutter</option>
+                                  <option value="F&I, Type 'D' Curb" style={{ color: 'darkgreen' }}>F&I, Type 'D' Curb</option>
+                                  <option value="Remove and Replace Existing Guard Rail" style={{ color: 'darkgreen' }}>Remove and Replace Existing Guard Rail</option>
+                                  <option value="Remove and Replace Existing Chain Link Fence" style={{ color: 'darkgreen' }}>Remove and Replace Existing Chain Link Fence</option>
+                                  <option value="Remove and Replace Existing Aluminum Fence" style={{ color: 'darkgreen' }}>Remove and Replace Existing Aluminum Fence</option>
+                                  <option value="F&I, Stabilized Subgrade" style={{ color: 'darkblue' }}>F&I, Stabilized Subgrade</option>
+                                  <option value="F&I, Limerock Base" style={{ color: 'darkblue' }}>F&I, Limerock Base</option>
+                                  <option value="F&I, Asphalt Pavement Restoration" style={{ color: 'darkblue' }}>F&I, Asphalt Pavement Restoration</option>
+                                  <option value="Mill and Resurface Asphalt Pavement" style={{ color: 'darkblue' }}>Mill and Resurface Asphalt Pavement</option>
+                                  <option value="Remove and Replace Asphalt Driveway" style={{ color: 'darkblue' }}>Remove and Replace Asphalt Driveway</option>
+                                  <option value="F&I, Asphalt Walkway" style={{ color: 'darkblue' }}>F&I, Asphalt Walkway</option>
+                                  <option value="F&I, Concrete Median" style={{ color: 'darkblue' }}>F&I, Concrete Median</option>
+                                  <option value="F&I, 6 inch Concrete Sidewalk" style={{ color: 'darkblue' }}>F&I, 6 inch Concrete Sidewalk</option>
+                                  <option value="Remove and Replace Concrete Driveway" style={{ color: 'darkblue' }}>Remove and Replace Concrete Driveway</option>
+                                  <option value="Remove and Replace Paver Driveway" style={{ color: 'darkblue' }}>Remove and Replace Paver Driveway</option>
+                                  <option value="F&I, Paver Walkway" style={{ color: 'darkblue' }}>F&I, Paver Walkway</option>
+                                  <option value="F&I, Concrete Golf Cart Path" style={{ color: 'darkblue' }}>F&I, Concrete Golf Cart Path</option>
+                                  <option value="F&I, Concrete Golf Cart Path with Rolled Curb" style={{ color: 'darkblue' }}>F&I, Concrete Golf Cart Path with Rolled Curb</option>
+                                  <option value="Restoration of Green Areas" style={{ color: 'darkblue' }}>Restoration of Green Areas</option>
+                                  <option value="Existing Minor Utility Adjustment">Existing Minor Utility Adjustment</option>
+                                  <option value="Existing Major Utility Adjustment">Existing Major Utility Adjustment</option>
+                                  <option value="Remove and Replace Existing Road Sign & Post Assembly">Remove and Replace Existing Road Sign &amp; Post Assembly</option>
+                                  <option value="Remove and Replace Existing Mailbox">Remove and Replace Existing Mailbox</option>
+                                  <option value="Restoration of Golf Course">Restoration of Golf Course</option>
+                                  <option value="Removal and Replacement of Unsuitable Material">Removal and Replacement of Unsuitable Material</option>
+                                  <option value="Replace Existing Potable Water Service">Replace Existing Potable Water Service</option>
+                                  <option value="Replace Existing Sanitary Sewer Lateral">Replace Existing Sanitary Sewer Lateral</option>
+                                  <option value="F&I, Pavement Marking and Striping">F&I, Pavement Marking and Striping</option>
+                                  <option value="R&D, Existing Trees">R&amp;D, Existing Trees</option>
+                                  <option value="F&I, Florida Number 2 Trees">F&I, Florida Number 2 Trees</option>
                                 </select>
                               </td>
                             </tr>
@@ -1100,8 +1187,11 @@ function App() {
                                   <option value="joint">Joint</option>
                                   <option value="90-bend">90-Bend</option>
                                   <option value="45-bend">45-Bend</option>
-                                  <option value="11-bend">11-Bend</option>
-                                  <option value="plug-valve">Plug Valve</option>
+                                  <option value="22.5-bend">22.5-Bend</option>
+                                  <option value="11.25-bend">11.25-Bend</option>
+                                  <option value="24-plug-valve">24-Plug Valve</option>
+                                  <option value="30-plug-valve">30-Plug Valve</option>
+                                  <option value="30-line-stop">30 Line Stop</option>
                                 </select>
                               </td>
                             </tr>
