@@ -667,41 +667,46 @@ function App() {
     setEditingDateId(null);
   }
 
-  function handleTrackFill() {
-    const LAT_FT = 364000; // feet per degree latitude
-    const polygonTracks = trackInfoList.filter(t => t.geometry === "polygon");
-    for (const trackRec of polygonTracks) {
+  function handleTrackCal() {
+    const LAT_FT = 364000;
+    const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
+    for (const trackRec of sorted) {
       const pts = [...location.filter(l => l.track === trackRec.track)]
         .sort((a, b) => {
           const da = `${a.date ?? ""}T${a.time ?? ""}`;
           const db = `${b.date ?? ""}T${b.time ?? ""}`;
           return da.localeCompare(db);
         });
-      const n = pts.length;
-      if (n < 3) {
-        client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: 0, yd2: 0 });
-        continue;
+
+      if (trackRec.geometry === "point") {
+        const n = pts.length;
+        const value = trackRec.unitprice != null ? trackRec.unitprice * n : undefined;
+        client.models.Track.update({ id: trackRec.id, numpoint: n, quan: n, value });
+      } else if (trackRec.geometry === "line") {
+        const total = pts.reduce((s, p) => s + (p.length ?? 0), 0);
+        const rounded = Math.round(total * 100) / 100;
+        const value = trackRec.unitprice != null ? trackRec.unitprice * rounded : undefined;
+        client.models.Track.update({ id: trackRec.id, quan: rounded, value });
+      } else if (trackRec.geometry === "polygon") {
+        const n = pts.length;
+        if (n < 3) {
+          const value = trackRec.unitprice != null ? 0 : undefined;
+          client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: 0, yd2: 0, quan: 0, value });
+          continue;
+        }
+        const midLat = pts.reduce((s, p) => s + (p.lat ?? 0), 0) / n;
+        const LNG_FT = LAT_FT * Math.cos((midLat * Math.PI) / 180);
+        let area = 0;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          area += (pts[i].lng ?? 0) * LNG_FT * (pts[j].lat ?? 0) * LAT_FT
+                - (pts[j].lng ?? 0) * LNG_FT * (pts[i].lat ?? 0) * LAT_FT;
+        }
+        const sqFt = Math.round(Math.abs(area) / 2 * 100) / 100;
+        const sqYd = Math.round(sqFt / 9 * 100) / 100;
+        const value = trackRec.unitprice != null ? trackRec.unitprice * sqYd : undefined;
+        client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: sqFt, yd2: sqYd, quan: sqYd, value });
       }
-      const midLat = pts.reduce((s, p) => s + (p.lat ?? 0), 0) / n;
-      const LNG_FT = LAT_FT * Math.cos((midLat * Math.PI) / 180);
-      // Shoelace formula in feet
-      let area = 0;
-      for (let i = 0; i < n; i++) {
-        const j = (i + 1) % n;
-        const xi = (pts[i].lng ?? 0) * LNG_FT;
-        const yi = (pts[i].lat ?? 0) * LAT_FT;
-        const xj = (pts[j].lng ?? 0) * LNG_FT;
-        const yj = (pts[j].lat ?? 0) * LAT_FT;
-        area += xi * yj - xj * yi;
-      }
-      const sqFt = Math.abs(area) / 2;
-      const sqYd = sqFt / 9;
-      client.models.Track.update({
-        id: trackRec.id,
-        numpoint: n,
-        ft2: Math.round(sqFt * 100) / 100,
-        yd2: Math.round(sqYd * 100) / 100,
-      });
     }
     setTab("4");
   }
@@ -832,8 +837,8 @@ function App() {
         <Button onClick={handleCal} backgroundColor={"lightyellow"} color={"darkblue"}>
           QC
         </Button>
-        <Button onClick={handleTrackFill} backgroundColor={"lightgreen"} color={"darkgreen"}>
-          Track Fill
+        <Button onClick={handleTrackCal} backgroundColor={"lightgreen"} color={"darkgreen"}>
+          Track Cal
         </Button>
         {calResult !== null && (
           <span style={{ alignSelf: "center", fontWeight: "bold" }}>
