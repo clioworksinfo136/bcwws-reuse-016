@@ -55,3 +55,16 @@ export const TRACK_DATA: TrackRow[] = [
 ];
 
 export const TRACK_TYPES = TRACK_DATA.map(r => r.type);
+
+export type ValvePriceRow = {
+  valve: string;
+  unitprice: number;
+  ton: number;
+};
+
+export const VALVE_PRICE_DATA: ValvePriceRow[] = [
+  { valve: '#0-6 24 in 11.25-bend', unitprice: 31762.00, ton: 5 },
+  { valve: '#0-6 24 in 22.5-bend',  unitprice: 31762.00, ton: 5 },
+  { valve: '#0-6 24 in 45-bend',    unitprice: 31762.00, ton: 5 },
+  { valve: '#0-6 24 in 90-bend',    unitprice: 31762.00, ton: 5 },
+];
