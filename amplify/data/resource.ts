@@ -53,6 +53,8 @@ const schema = a.schema({
     .model({
       valve: a.string(),
       number: a.integer(),
+      unitprice: a.float(),
+      value: a.float(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
   Date: a

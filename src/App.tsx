@@ -727,6 +727,12 @@ function App() {
     const LAT_FT = 364000;
     const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
 
+    // Pre-Pass: clear all existing Valve records
+    const { data: allValves } = await client.models.Valve.list();
+    for (const v of allValves ?? []) {
+      await client.models.Valve.delete({ id: v.id });
+    }
+
     // Pass 0: populate unitprice and geometry from trackData.ts by matching Location type → TRACK_DATA
     for (const trackRec of sorted) {
       const pts = location.filter(l => l.track === trackRec.track);
@@ -751,6 +757,16 @@ function App() {
     // Pass 1: compute quantity (and ft2/yd2 for polygons) using fresh geometry
     for (const trackRec of freshSorted) {
       const pts = location.filter(l => l.track === trackRec.track);
+
+      // Find the last date among all locations in this track
+      const lastdate = pts
+        .map(p => p.date ?? '')
+        .filter(d => d !== '')
+        .sort()
+        .at(-1) ?? null;
+      if (lastdate) {
+        await client.models.Track.update({ id: trackRec.id, lastdate });
+      }
 
       if (trackRec.geometry === 'line') {
         const total = Math.round(pts.reduce((s, p) => s + (p.length ?? 0), 0) * 100) / 100;
