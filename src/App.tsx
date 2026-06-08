@@ -1,5 +1,6 @@
 import type { ChangeEvent, SyntheticEvent } from "react";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import type { Schema } from "../amplify/data/resource";
 import { checkLoginAndGetName } from "./utils/AuthUtils";
 import { useAuthenticator } from '@aws-amplify/ui-react';
@@ -67,7 +68,7 @@ import {
 
 //import type { WaterFeatureProperties } from './types';
 import './FeaturePopup.css';
-import { TRACK_DATA, VALVE_PRICE_DATA } from './trackData';
+import { TRACK_DATA } from './trackData';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 const client = generateClient<Schema>();
@@ -675,7 +676,7 @@ function App() {
       value: newTrack.value !== "" ? Number(newTrack.value) : undefined,
       numpoint: newTrack.numpoint !== "" ? Number(newTrack.numpoint) : undefined,
       trip: newTrack.trip,
-      cost: newTrack.cost,
+      cost: true,
     });
     setNewTrack({ track: "", geometry: "line", ft2: "", yd2: "", unitprice: "", quan: "", value: "", numpoint: "", trip: false, cost: false });
   }
@@ -728,31 +729,20 @@ function App() {
     const LAT_FT = 364000;
     const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
 
-    // Pre-Pass: clear all existing Valve records
-    setComputeStatus("Pre-Pass: Clearing Valve table...");
-    await new Promise(r => setTimeout(r, 0));
-    const { data: allValves } = await client.models.Valve.list();
-    for (const v of allValves ?? []) {
-      await client.models.Valve.delete({ id: v.id });
-    }
-
     // Pass 0: populate unitprice and geometry from trackData.ts by matching Location type → TRACK_DATA
-    setComputeStatus("Pass 0: Populating unit price, geometry, unit from trackData...");
-    await new Promise(r => setTimeout(r, 0));
+    flushSync(() => setComputeStatus("Pass 0: Populating unit price, geometry, unit from trackData..."));
     for (const trackRec of sorted) {
       const pts = location.filter(l => l.track === trackRec.track);
       const firstType = pts.find(p => p.type)?.type;
-      if (firstType) {
-        const match = TRACK_DATA.find(r => r.type === firstType);
-        if (match) {
-          await client.models.Track.update({
-            id: trackRec.id,
-            ...(match.unitprice != null && { unitprice: match.unitprice }),
-            ...(match.geometry   != null && { geometry:  match.geometry  }),
-            ...(match.unit       != null && { unit:      match.unit       }),
-          });
-        }
-      }
+      const match = firstType ? TRACK_DATA.find(r => r.type === firstType) : undefined;
+      await client.models.Track.update({
+        id: trackRec.id,
+        cost: true,
+        trip: true,
+        ...(match?.unitprice != null && { unitprice: match.unitprice }),
+        ...(match?.geometry  != null && { geometry:  match.geometry  }),
+        ...(match?.unit      != null && { unit:      match.unit      }),
+      });
     }
 
     // Re-fetch fresh track data after Pass 0 so geometry/unitprice updates are reflected
@@ -760,8 +750,7 @@ function App() {
     const freshSorted = [...(freshTracks ?? [])].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
 
     // Pass 1: compute quantity (and ft2/yd2 for polygons) using fresh geometry
-    setComputeStatus("Pass 1: Computing quantity, area, last date...");
-    await new Promise(r => setTimeout(r, 0));
+    flushSync(() => setComputeStatus("Pass 1: Computing quantity, area, last date..."));
     for (const trackRec of freshSorted) {
       const pts = location.filter(l => l.track === trackRec.track);
 
@@ -810,8 +799,7 @@ function App() {
     }
 
     // Pass 2: compute value = unitprice * quantity
-    setComputeStatus("Pass 2: Computing Track value = unit price × quantity...");
-    await new Promise(r => setTimeout(r, 0));
+    flushSync(() => setComputeStatus("Pass 2: Computing Track value = unit price × quantity..."));
     for (const trackRec of freshSorted) {
       const { data: fresh } = await client.models.Track.get({ id: trackRec.id });
       if (fresh && fresh.unitprice != null && fresh.quan != null) {
@@ -821,8 +809,7 @@ function App() {
     }
 
     // Pass 3: count Location records where joint <> "joint", grouped by joint value → save to Valve table (last step)
-    setComputeStatus("Pass 3: Counting joints, updating Valve table...");
-    await new Promise(r => setTimeout(r, 0));
+    flushSync(() => setComputeStatus("Pass 3: Counting joints, updating Valve table..."));
     const nonJoint = location.filter(l => l.joint !== 'joint' && l.joint != null && l.joint !== '');
     const typeCounts: Record<string, number> = {};
     for (const loc of nonJoint) {
@@ -839,20 +826,8 @@ function App() {
       }
     }
 
-    // Pass 3.5: populate unitprice and ton in Valve table from VALVE_PRICE_DATA
-    setComputeStatus("Pass 3.5: Populating Valve unit price and ton from lookup table...");
-    await new Promise(r => setTimeout(r, 0));
-    const { data: valvesForPrice } = await client.models.Valve.list();
-    for (const v of valvesForPrice ?? []) {
-      const match = VALVE_PRICE_DATA.find(r => r.valve === v.valve);
-      if (match) {
-        await client.models.Valve.update({ id: v.id, unitprice: match.unitprice, ton: match.ton });
-      }
-    }
-
     // Pass 4: compute Valve value = number * unitprice * ton
-    setComputeStatus("Pass 4: Computing Valve value = number × unit price × ton...");
-    await new Promise(r => setTimeout(r, 0));
+    flushSync(() => setComputeStatus("Pass 4: Computing Valve value = number × unit price × ton..."));
     const { data: freshValves } = await client.models.Valve.list();
     for (const v of freshValves ?? []) {
       if (v.number != null && v.unitprice != null && v.ton != null) {
@@ -1672,6 +1647,7 @@ function App() {
                     style={{ width: '100%', fontFamily: 'Arial, sans-serif' }}>
                     <TableHead>
                       <TableRow>
+                        <TableCell as="th">Cost</TableCell>
                         <TableCell as="th">Track</TableCell>
                         <TableCell as="th">Geometry</TableCell>
                         <TableCell as="th">ft²</TableCell>
@@ -1682,14 +1658,15 @@ function App() {
                         <TableCell as="th">Quantity</TableCell>
                         <TableCell as="th">Value</TableCell>
                         <TableCell as="th">Num Points</TableCell>
-                        <TableCell as="th">Trip</TableCell>
-                        <TableCell as="th">Cost</TableCell>
                         <TableCell as="th"></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {/* New record input row */}
                       <TableRow>
+                        <TableCell>
+                          <input type="checkbox" checked={newTrack.cost} onChange={e => setNewTrack(p => ({ ...p, cost: e.target.checked }))} />
+                        </TableCell>
                         <TableCell>
                           <Input type="number" placeholder="Track #" value={newTrack.track === "" ? "" : String(newTrack.track)}
                             onChange={e => setNewTrack(p => ({ ...p, track: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '60px' }} />
@@ -1726,10 +1703,6 @@ function App() {
                             onChange={e => setNewTrack(p => ({ ...p, numpoint: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '70px' }} />
                         </TableCell>
                         <TableCell>
-                          <input type="checkbox" checked={newTrack.trip} onChange={e => setNewTrack(p => ({ ...p, trip: e.target.checked }))} />
-                        </TableCell>
-                        <TableCell>
-                          <input type="checkbox" checked={newTrack.cost} onChange={e => setNewTrack(p => ({ ...p, cost: e.target.checked }))} />
                         </TableCell>
                         <TableCell>
                           <button onClick={createTrackInfo} style={{ backgroundColor: '#2b6cb0', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Add</button>
@@ -1739,6 +1712,9 @@ function App() {
                         const isEditing = editingTrackId === item.id;
                         return isEditing ? (
                           <TableRow key={item.id}>
+                            <TableCell>
+                              <input type="checkbox" checked={editTrackFields.cost} onChange={e => setEditTrackFields(p => ({ ...p, cost: e.target.checked }))} />
+                            </TableCell>
                             <TableCell>
                               <Input type="number" value={editTrackFields.track === "" ? "" : String(editTrackFields.track)}
                                 onChange={e => setEditTrackFields(p => ({ ...p, track: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '60px' }} />
@@ -1775,18 +1751,13 @@ function App() {
                                 onChange={e => setEditTrackFields(p => ({ ...p, numpoint: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '70px' }} />
                             </TableCell>
                             <TableCell>
-                              <input type="checkbox" checked={editTrackFields.trip} onChange={e => setEditTrackFields(p => ({ ...p, trip: e.target.checked }))} />
-                            </TableCell>
-                            <TableCell>
-                              <input type="checkbox" checked={editTrackFields.cost} onChange={e => setEditTrackFields(p => ({ ...p, cost: e.target.checked }))} />
-                            </TableCell>
-                            <TableCell>
                               <button onClick={() => saveTrackInfo(item.id)} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', marginRight: '4px' }}>Save</button>
                               <button onClick={() => setEditingTrackId(null)} style={{ border: 'none', padding: '4px 8px', cursor: 'pointer' }}>Cancel</button>
                             </TableCell>
                           </TableRow>
                         ) : (
                           <TableRow key={item.id}>
+                            <TableCell>{item.cost ? '✓' : ''}</TableCell>
                             <TableCell>{item.track}</TableCell>
                             <TableCell>{item.geometry}</TableCell>
                             <TableCell>{item.ft2 ?? ''}</TableCell>
@@ -1797,8 +1768,6 @@ function App() {
                             <TableCell>{item.quan ?? ''}</TableCell>
                             <TableCell>{item.value ?? ''}</TableCell>
                             <TableCell>{item.numpoint ?? ''}</TableCell>
-                            <TableCell>{item.trip ? '✓' : ''}</TableCell>
-                            <TableCell>{item.cost ? '✓' : ''}</TableCell>
                             <TableCell>
                               <button onClick={() => {
                                 setEditingTrackId(item.id);
