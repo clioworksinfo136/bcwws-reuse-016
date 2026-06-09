@@ -89,7 +89,7 @@ type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
 
 const trackInfoSelectionSet = [
   'id', 'track', 'geometry', 'ft2', 'yd2', 'unitprice',
-  'quan', 'value', 'numpoint', 'trip', 'cost', 'unit', 'lastdate', 'color', 'createdAt', 'updatedAt',
+  'quan', 'value', 'numpoint', 'trip', 'cost', 'unit', 'lastdate', 'color', 'type', 'createdAt', 'updatedAt',
 ] as const;
 type TrackInfoItem = SelectionSet<Schema['Track']['type'], typeof trackInfoSelectionSet>;
 
@@ -841,6 +841,7 @@ function App() {
         ...(match?.geometry  != null && { geometry:  match.geometry  }),
         ...(match?.unit      != null && { unit:      match.unit      }),
         ...(match?.color     != null && { color:     match.color     }),
+        ...(match?.type      != null && { type:      match.type      }),
       });
     }
 
@@ -1015,9 +1016,6 @@ function App() {
         </Button>
         <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
           Compute
-        </Button>
-        <Button onClick={handleExportPolygon} backgroundColor={"steelblue"} color={"white"}>
-          Complete Polygon
         </Button>
         {computeStatus && (
           <span style={{ alignSelf: "center", fontWeight: "bold", color: computeStatus.startsWith("✓") ? "darkgreen" : "darkorange" }}>
@@ -1752,6 +1750,7 @@ function App() {
                       <TableRow>
                         <TableCell as="th">Auto/Manual</TableCell>
                         <TableCell as="th">Track</TableCell>
+                        <TableCell as="th">Type</TableCell>
                         <TableCell as="th">Geometry</TableCell>
                         <TableCell as="th">ft²</TableCell>
                         <TableCell as="th">yd²</TableCell>
@@ -1773,6 +1772,10 @@ function App() {
                         <TableCell>
                           <Input type="number" placeholder="Track #" value={newTrack.track === "" ? "" : String(newTrack.track)}
                             onChange={e => setNewTrack(p => ({ ...p, track: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '60px' }} />
+                        </TableCell>
+                        <TableCell>
+                          <Input type="text" placeholder="Type" value={(newTrack as any).type ?? ""}
+                            onChange={e => setNewTrack(p => ({ ...p, type: e.target.value }))} style={{ width: '120px' }} />
                         </TableCell>
                         <TableCell>
                           <select value={newTrack.geometry} onChange={e => setNewTrack(p => ({ ...p, geometry: e.target.value }))} style={{ padding: '4px' }}>
@@ -1823,6 +1826,10 @@ function App() {
                                 onChange={e => setEditTrackFields(p => ({ ...p, track: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '60px' }} />
                             </TableCell>
                             <TableCell>
+                              <Input type="text" value={(editTrackFields as any).type ?? ""}
+                                onChange={e => setEditTrackFields(p => ({ ...p, type: e.target.value }))} style={{ width: '120px' }} />
+                            </TableCell>
+                            <TableCell>
                               <select value={editTrackFields.geometry} onChange={e => setEditTrackFields(p => ({ ...p, geometry: e.target.value }))} style={{ padding: '4px' }}>
                                 <option value="line">line</option>
                                 <option value="point">point</option>
@@ -1870,6 +1877,7 @@ function App() {
                           <TableRow key={item.id}>
                             <TableCell>{item.cost ? '✓' : ''}</TableCell>
                             <TableCell>{item.track}</TableCell>
+                            <TableCell>{(item as any).type ?? ''}</TableCell>
                             <TableCell>{item.geometry}</TableCell>
                             <TableCell>{item.ft2 != null ? Math.round(item.ft2).toLocaleString('en-US') : ''}</TableCell>
                             <TableCell>{item.yd2 != null ? Math.round(item.yd2).toLocaleString('en-US') : ''}</TableCell>
