@@ -234,6 +234,10 @@ function App() {
 
   const [trackInfoList, setTrackInfoList] = useState<TrackInfoItem[]>([]);
   const [valveList, setValveList] = useState<ValveItem[]>([]);
+  const [editingValveId, setEditingValveId] = useState<string | null>(null);
+  const [editValveFields, setEditValveFields] = useState({
+    number: "" as number | "", unitprice: "" as number | "", ton: "" as number | "",
+  });
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editTrackFields, setEditTrackFields] = useState({
     track: "" as number | "", geometry: "line",
@@ -241,13 +245,14 @@ function App() {
     unitprice: "" as number | "", quan: "" as number | "",
     value: "" as number | "", numpoint: "" as number | "",
     trip: false, cost: false,
+    unit: "", lastdate: "",
   });
   const [newTrack, setNewTrack] = useState({
     track: "" as number | "", geometry: "line",
     ft2: "" as number | "", yd2: "" as number | "",
     unitprice: "" as number | "", quan: "" as number | "",
     value: "" as number | "", numpoint: "" as number | "",
-    trip: false, cost: false,
+    trip: false, cost: true,
   });
 
 
@@ -283,7 +288,7 @@ function App() {
     setTrack(val);
     if (!isNaN(val) && !trackInfoList.some(item => item.track === val)) {
       client.models.Track.create({ track: val });
-      setNewTrack({ track: "", geometry: "line", ft2: "", yd2: "", unitprice: "", quan: "", value: "", numpoint: "", trip: false, cost: false });
+      setNewTrack({ track: "", geometry: "line", ft2: "", yd2: "", unitprice: "", quan: "", value: "", numpoint: "", trip: false, cost: true });
     }
   };
 
@@ -403,7 +408,7 @@ function App() {
     });
 
     if (!trackInfoList.some(t => t.track === track)) {
-      client.models.Track.create({ track });
+      client.models.Track.create({ track, cost: true });
     }
     console.log('[createLocation] date value:', date);
     const { data: existingDates, errors: listErrors } = await client.models.Date.list({ filter: { date: { eq: date } } });
@@ -678,7 +683,7 @@ function App() {
       trip: newTrack.trip,
       cost: true,
     });
-    setNewTrack({ track: "", geometry: "line", ft2: "", yd2: "", unitprice: "", quan: "", value: "", numpoint: "", trip: false, cost: false });
+    setNewTrack({ track: "", geometry: "line", ft2: "", yd2: "", unitprice: "", quan: "", value: "", numpoint: "", trip: false, cost: true });
   }
 
   function saveTrackInfo(id: string) {
@@ -694,8 +699,21 @@ function App() {
       numpoint: editTrackFields.numpoint !== "" ? Number(editTrackFields.numpoint) : undefined,
       trip: editTrackFields.trip,
       cost: editTrackFields.cost,
+      unit: editTrackFields.unit || null,
+      lastdate: editTrackFields.lastdate || null,
     });
     setEditingTrackId(null);
+  }
+
+  function saveValveInfo(id: string) {
+    const number = editValveFields.number !== "" ? Number(editValveFields.number) : undefined;
+    const unitprice = editValveFields.unitprice !== "" ? Number(editValveFields.unitprice) : undefined;
+    const ton = editValveFields.ton !== "" ? Number(editValveFields.ton) : undefined;
+    const value = (number != null && unitprice != null && ton != null)
+      ? Math.round(number * unitprice * ton * 100) / 100
+      : undefined;
+    client.models.Valve.update({ id, number, unitprice, ton, ...(value != null && { value }) });
+    setEditingValveId(null);
   }
 
   function handleCal() {
@@ -737,8 +755,8 @@ function App() {
       const match = firstType ? TRACK_DATA.find(r => r.type === firstType) : undefined;
       await client.models.Track.update({
         id: trackRec.id,
-        cost: true,
         trip: true,
+        ...(trackRec.cost == null && { cost: true }),
         ...(match?.unitprice != null && { unitprice: match.unitprice }),
         ...(match?.geometry  != null && { geometry:  match.geometry  }),
         ...(match?.unit      != null && { unit:      match.unit      }),
@@ -752,6 +770,7 @@ function App() {
     // Pass 1: compute quantity (and ft2/yd2 for polygons) using fresh geometry
     flushSync(() => setComputeStatus("Pass 1: Computing quantity, area, last date..."));
     for (const trackRec of freshSorted) {
+      if (!trackRec.cost) continue;
       const pts = location.filter(l => l.track === trackRec.track);
 
       // Find the last date among all locations in this track
@@ -794,13 +813,18 @@ function App() {
         }
         const sqFt = Math.round(Math.abs(area) / 2 * 100) / 100;
         const sqYd = Math.round(sqFt / 9 * 100) / 100;
-        await client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: sqFt, yd2: sqYd, quan: sqYd });
+        const unit = trackRec.unit ?? '';
+        const quan = unit.toLowerCase().includes('square foot') || unit.toLowerCase().includes('sq ft')
+          ? sqFt
+          : sqYd;
+        await client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: sqFt, yd2: sqYd, quan });
       }
     }
 
     // Pass 2: compute value = unitprice * quantity
     flushSync(() => setComputeStatus("Pass 2: Computing Track value = unit price × quantity..."));
     for (const trackRec of freshSorted) {
+      if (!trackRec.cost) continue;
       const { data: fresh } = await client.models.Track.get({ id: trackRec.id });
       if (fresh && fresh.unitprice != null && fresh.quan != null) {
         const value = Math.round(fresh.unitprice * fresh.quan * 100) / 100;
@@ -1647,16 +1671,16 @@ function App() {
                     style={{ width: '100%', fontFamily: 'Arial, sans-serif' }}>
                     <TableHead>
                       <TableRow>
-                        <TableCell as="th">Cost</TableCell>
+                        <TableCell as="th">Auto/Manual</TableCell>
                         <TableCell as="th">Track</TableCell>
                         <TableCell as="th">Geometry</TableCell>
                         <TableCell as="th">ft²</TableCell>
                         <TableCell as="th">yd²</TableCell>
-                        <TableCell as="th">Unit Price</TableCell>
+                        <TableCell as="th">Unit Price ($/unit)</TableCell>
                         <TableCell as="th">Unit</TableCell>
                         <TableCell as="th">Last Date</TableCell>
                         <TableCell as="th">Quantity</TableCell>
-                        <TableCell as="th">Value</TableCell>
+                        <TableCell as="th">Cost</TableCell>
                         <TableCell as="th">Num Points</TableCell>
                         <TableCell as="th"></TableCell>
                       </TableRow>
@@ -1739,6 +1763,14 @@ function App() {
                                 onChange={e => setEditTrackFields(p => ({ ...p, unitprice: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '80px' }} />
                             </TableCell>
                             <TableCell>
+                              <Input type="text" value={editTrackFields.unit}
+                                onChange={e => setEditTrackFields(p => ({ ...p, unit: e.target.value }))} style={{ width: '100px' }} />
+                            </TableCell>
+                            <TableCell>
+                              <Input type="text" value={editTrackFields.lastdate}
+                                onChange={e => setEditTrackFields(p => ({ ...p, lastdate: e.target.value }))} style={{ width: '100px' }} />
+                            </TableCell>
+                            <TableCell>
                               <Input type="number" value={editTrackFields.quan === "" ? "" : String(editTrackFields.quan)}
                                 onChange={e => setEditTrackFields(p => ({ ...p, quan: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '70px' }} />
                             </TableCell>
@@ -1760,13 +1792,13 @@ function App() {
                             <TableCell>{item.cost ? '✓' : ''}</TableCell>
                             <TableCell>{item.track}</TableCell>
                             <TableCell>{item.geometry}</TableCell>
-                            <TableCell>{item.ft2 ?? ''}</TableCell>
-                            <TableCell>{item.yd2 ?? ''}</TableCell>
-                            <TableCell>{item.unitprice ?? ''}</TableCell>
+                            <TableCell>{item.ft2 != null ? Math.round(item.ft2).toLocaleString('en-US') : ''}</TableCell>
+                            <TableCell>{item.yd2 != null ? Math.round(item.yd2).toLocaleString('en-US') : ''}</TableCell>
+                            <TableCell>{item.unitprice != null ? '$' + Math.round(item.unitprice).toLocaleString('en-US') : ''}</TableCell>
                             <TableCell>{item.unit ?? ''}</TableCell>
                             <TableCell>{item.lastdate ?? ''}</TableCell>
-                            <TableCell>{item.quan ?? ''}</TableCell>
-                            <TableCell>{item.value ?? ''}</TableCell>
+                            <TableCell>{item.quan != null ? Math.round(item.quan).toLocaleString('en-US') : ''}</TableCell>
+                            <TableCell>{item.value != null ? '$' + Math.round(item.value).toLocaleString('en-US') : ''}</TableCell>
                             <TableCell>{item.numpoint ?? ''}</TableCell>
                             <TableCell>
                               <button onClick={() => {
@@ -1782,6 +1814,8 @@ function App() {
                                   numpoint: item.numpoint ?? "",
                                   trip: item.trip ?? false,
                                   cost: item.cost ?? false,
+                                  unit: item.unit ?? "",
+                                  lastdate: item.lastdate ?? "",
                                 });
                               }} style={{ backgroundColor: '#2b6cb0', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', marginRight: '4px' }}>Edit</button>
                               <button onClick={() => { if (window.confirm(`Delete track ${item.track} record?`)) client.models.Track.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer' }}>Delete</button>
@@ -1815,21 +1849,61 @@ function App() {
                       <TableRow>
                         <TableCell as="th">Valve</TableCell>
                         <TableCell as="th">Number</TableCell>
-                        <TableCell as="th">Unit Price</TableCell>
+                        <TableCell as="th">Unit Price ($/ton*each)</TableCell>
                         <TableCell as="th">Ton</TableCell>
-                        <TableCell as="th">Value</TableCell>
+                        <TableCell as="th">Cost</TableCell>
+                        <TableCell as="th"></TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {[...valveList].sort((a, b) => (a.valve ?? '').localeCompare(b.valve ?? '')).map(item => (
+                      {[...valveList].sort((a, b) => (a.valve ?? '').localeCompare(b.valve ?? '')).map(item => {
+                        const isEditing = editingValveId === item.id;
+                        const evf = editValveFields;
+                        return isEditing ? (
+                          <TableRow key={item.id}>
+                            <TableCell>{item.valve ?? ''}</TableCell>
+                            <TableCell>
+                              <Input type="number" value={evf.number === "" ? "" : String(evf.number)}
+                                onChange={e => setEditValveFields(p => ({ ...p, number: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '70px' }} />
+                            </TableCell>
+                            <TableCell>
+                              <Input type="number" value={evf.unitprice === "" ? "" : String(evf.unitprice)}
+                                onChange={e => setEditValveFields(p => ({ ...p, unitprice: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '80px' }} />
+                            </TableCell>
+                            <TableCell>
+                              <Input type="number" value={evf.ton === "" ? "" : String(evf.ton)}
+                                onChange={e => setEditValveFields(p => ({ ...p, ton: e.target.value === "" ? "" : Number(e.target.value) }))} style={{ width: '70px' }} />
+                            </TableCell>
+                            <TableCell>
+                              {evf.number !== "" && evf.unitprice !== "" && evf.ton !== ""
+                                ? (Math.round(Number(evf.number) * Number(evf.unitprice) * Number(evf.ton) * 100) / 100)
+                                : item.value ?? ''}
+                            </TableCell>
+                            <TableCell>
+                              <button onClick={() => saveValveInfo(item.id)} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer', marginRight: '4px' }}>Save</button>
+                              <button onClick={() => setEditingValveId(null)} style={{ border: 'none', padding: '4px 8px', cursor: 'pointer' }}>Cancel</button>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
                           <TableRow key={item.id}>
                             <TableCell>{item.valve ?? ''}</TableCell>
                             <TableCell>{item.number ?? ''}</TableCell>
-                            <TableCell>{item.unitprice ?? ''}</TableCell>
+                            <TableCell>{item.unitprice != null ? '$' + Math.round(item.unitprice).toLocaleString('en-US') : ''}</TableCell>
                             <TableCell>{item.ton ?? ''}</TableCell>
-                            <TableCell>{item.value ?? ''}</TableCell>
+                            <TableCell>{item.value != null ? '$' + Math.round(item.value).toLocaleString('en-US') : ''}</TableCell>
+                            <TableCell>
+                              <button onClick={() => {
+                                setEditingValveId(item.id);
+                                setEditValveFields({
+                                  number: item.number ?? "",
+                                  unitprice: item.unitprice ?? "",
+                                  ton: item.ton ?? "",
+                                });
+                              }} style={{ backgroundColor: '#2b6cb0', color: 'white', border: 'none', padding: '4px 8px', cursor: 'pointer' }}>Edit</button>
+                            </TableCell>
                           </TableRow>
-                        ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </ThemeProvider>
