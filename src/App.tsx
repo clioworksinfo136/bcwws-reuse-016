@@ -273,20 +273,6 @@ function App() {
     return Object.values(groups).sort((a, b) => a.typeid1.localeCompare(b.typeid1, undefined, { numeric: true }));
   }, [trackInfoList]);
 
-  const typeInfo2Rows = useMemo(() => {
-    const groups: Record<string, { typeid: string; type: string | null; unitprice: number | null; unit: string | null; quan: number; value: number }> = {};
-    for (const t of trackInfoList) {
-      if (!t.typeid) continue;
-      const g = groups[t.typeid] ??= { typeid: t.typeid, type: null, unitprice: null, unit: null, quan: 0, value: 0 };
-      if (g.type == null && t.type != null) g.type = t.type;
-      if (g.unitprice == null && t.unitprice != null) g.unitprice = t.unitprice;
-      if (g.unit == null && t.unit != null) g.unit = t.unit;
-      g.quan += t.quan ?? 0;
-      g.value += t.value ?? 0;
-    }
-    return Object.values(groups).sort((a, b) => a.typeid.localeCompare(b.typeid, undefined, { numeric: true }));
-  }, [trackInfoList]);
-
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editTrackFields, setEditTrackFields] = useState({
     track: "" as number | "", geometry: "line",
@@ -1283,11 +1269,6 @@ function App() {
                                   onChange={e => setEditType(e.target.value)}
                                   style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
                                 >
-                                  <option value="reuse" style={{ color: 'darkgreen' }}>reuse</option>
-                                  <option value="water" style={{ color: 'darkgreen' }}>water</option>
-                                  <option value="wastewater" style={{ color: 'darkgreen' }}>wastewater</option>
-                                  <option value="stormwater" style={{ color: 'darkgreen' }}>stormwater</option>
-                                  <option value="pavement" style={{ color: 'darkgreen' }}>pavement</option>
                                   <option value="F&I, Type 'F' Curb and Gutter" style={{ color: 'darkgreen' }}>F&I, Type 'F' Curb and Gutter</option>
                                   <option value="F&I, Type 'E' Curb and Gutter" style={{ color: 'darkgreen' }}>F&I, Type 'E' Curb and Gutter</option>
                                   <option value="F&I, Type 'D' Curb" style={{ color: 'darkgreen' }}>F&I, Type 'D' Curb</option>
@@ -1344,22 +1325,6 @@ function App() {
                                   onChange={e => setEditDescription(e.target.value)}
                                   style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
                                 />
-                              </td>
-                            </tr>
-                            <tr>
-                              <td>Joint</td>
-                              <td>
-                                <select
-                                  value={editJoint}
-                                  onChange={e => setEditJoint(e.target.value)}
-                                  style={{ fontSize: '11px', padding: '2px 4px' }}
-                                >
-                                  <option value="joint">joint</option>
-                                  <option value="#0-6 24 in 90-bend">#0-6 24 in 90-bend</option>
-                                  <option value="#0-6 24 in 45-bend">#0-6 24 in 45-bend</option>
-                                  <option value="#0-6 24 in 22.5-bend">#0-6 24 in 22.5-bend</option>
-                                  <option value="#0-6 24 in 11.25-bend">#0-6 24 in 11.25-bend</option>
-                                </select>
                               </td>
                             </tr>
                           </tbody>
@@ -1943,12 +1908,12 @@ function App() {
               </ScrollView>
             </>)
           }, {
-            label: "Type Info 1",
+            label: "Type Info",
             value: "5",
             content: (<>
               <ScrollView
                 as="div"
-                ariaLabel="Type Info 1"
+                ariaLabel="Type Info"
                 backgroundColor="var(--amplify-colors-white)"
                 borderRadius="6px"
                 color="var(--amplify-colors-blue-60)"
@@ -2010,48 +1975,6 @@ function App() {
                           </TableRow>
                         ]);
                       })()}
-                    </TableBody>
-                  </Table>
-                </ThemeProvider>
-              </ScrollView>
-            </>)
-          }, {
-            label: "Type Info 2",
-            value: "6",
-            content: (<>
-              <ScrollView
-                as="div"
-                ariaLabel="Type Info 2"
-                backgroundColor="var(--amplify-colors-white)"
-                borderRadius="6px"
-                color="var(--amplify-colors-blue-60)"
-                padding="1rem"
-                height="700px"
-              >
-                <ThemeProvider theme={theme} colorMode="light">
-                  <Table caption="" highlightOnHover={false} variation="striped"
-                    style={{ width: '100%', fontFamily: 'Arial, sans-serif' }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell as="th">Type ID</TableCell>
-                        <TableCell as="th">Type</TableCell>
-                        <TableCell as="th">Unit Price ($/unit)</TableCell>
-                        <TableCell as="th">Unit</TableCell>
-                        <TableCell as="th">Quantity</TableCell>
-                        <TableCell as="th">Value</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {typeInfo2Rows.map(row => (
-                        <TableRow key={row.typeid}>
-                          <TableCell>{row.typeid}</TableCell>
-                          <TableCell>{row.typeid === '#0-6' ? 'F&I, DIP Compact Fittings' : row.type ?? ''}</TableCell>
-                          <TableCell>{row.unitprice != null ? '$' + row.unitprice.toLocaleString('en-US') : ''}</TableCell>
-                          <TableCell>{row.unit ?? ''}</TableCell>
-                          <TableCell>{Math.round(row.quan).toLocaleString('en-US')}</TableCell>
-                          <TableCell>{'$' + Math.round(row.value).toLocaleString('en-US')}</TableCell>
-                        </TableRow>
-                      ))}
                     </TableBody>
                   </Table>
                 </ThemeProvider>
