@@ -34,7 +34,8 @@
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); fields=[f['name'] for f in d['data']['__type']['fields']]; print\\('totalprice present:', 'totalprice' in fields\\); print\\('typeid present:', 'typeid' in fields\\); print\\(sorted\\(fields\\)\\)\")",
       "Bash(git commit -m 'Fix Pass 0 to upsert tracks from Location; add line.geojson export and typeid dropdown labels *)",
       "Bash(curl -s -X POST https://euhxsprquzc6zk2rrrlgy3qdky.appsync-api.us-east-1.amazonaws.com/graphql -H 'Content-Type: application/json' -H 'x-api-key: da2-spnpofbvbvcxdebfm23rltvk4q' -d '{\"query\":\"query { listLocations\\(limit: 1000\\) { items { track type } } }\"}')",
-      "Bash(git commit -m 'Default type dropdown to first valid option instead of stale '\\\\''reuse'\\\\'' *)"
+      "Bash(git commit -m 'Default type dropdown to first valid option instead of stale '\\\\''reuse'\\\\'' *)",
+      "Bash(git commit -m 'Remove point/line export status messages from Complete Polygon *)"
     ]
   }
 }

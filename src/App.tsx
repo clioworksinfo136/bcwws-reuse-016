@@ -904,10 +904,9 @@ function App() {
         data: blob,
         options: { contentType: 'application/json' },
       }).result;
-      setComputeStatus(prev => [...prev, `✓ Saved ${features.length} polygon(s) to Amplify Storage as geojson/polygon.geojson.`]);
+      flushSync(() => setComputeStatus(prev => [...prev, `✓ Saved ${features.length} polygon(s) to Amplify Storage as geojson/polygon.geojson.`]));
 
       // Export locations on point-geometry tracks as point.geojson
-      flushSync(() => setComputeStatus(prev => [...prev, "Exporting point tracks to point.geojson..."]));
       const pointTracks = trackInfoList.filter(t => t.geometry === 'point');
       const pointFeatures = pointTracks.flatMap(trackRec =>
         location
@@ -939,10 +938,8 @@ function App() {
         data: new Blob([JSON.stringify(pointGeojson, null, 2)], { type: 'application/json' }),
         options: { contentType: 'application/json' },
       }).result;
-      setComputeStatus(prev => [...prev, `✓ Saved ${pointFeatures.length} point(s) to Amplify Storage as geojson/point.geojson.`]);
 
       // Export locations on line-geometry tracks as line.geojson (one LineString per track)
-      flushSync(() => setComputeStatus(prev => [...prev, "Exporting line tracks to line.geojson..."]));
       const lineTracks = trackInfoList.filter(t => t.geometry === 'line');
       const lineFeatures = [];
       for (const trackRec of lineTracks) {
@@ -977,7 +974,6 @@ function App() {
         data: new Blob([JSON.stringify(lineGeojson, null, 2)], { type: 'application/json' }),
         options: { contentType: 'application/json' },
       }).result;
-      setComputeStatus(prev => [...prev, `✓ Saved ${lineFeatures.length} line(s) to Amplify Storage as geojson/line.geojson.`]);
       setTimeout(() => setComputeStatus([]), 2000);
     } catch (err) {
       console.error('handleCompletePolygon error:', err);
