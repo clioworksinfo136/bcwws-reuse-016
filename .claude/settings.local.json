@@ -36,7 +36,8 @@
       "Bash(curl -s -X POST https://euhxsprquzc6zk2rrrlgy3qdky.appsync-api.us-east-1.amazonaws.com/graphql -H 'Content-Type: application/json' -H 'x-api-key: da2-spnpofbvbvcxdebfm23rltvk4q' -d '{\"query\":\"query { listLocations\\(limit: 1000\\) { items { track type } } }\"}')",
       "Bash(git commit -m 'Default type dropdown to first valid option instead of stale '\\\\''reuse'\\\\'' *)",
       "Bash(git commit -m 'Remove point/line export status messages from Complete Polygon *)",
-      "Bash(git commit -m 'Add Export Point button; export point-track locations to point.geojson *)"
+      "Bash(git commit -m 'Add Export Point button; export point-track locations to point.geojson *)",
+      "Bash(git commit -m 'Add color field to Export Point geojson output *)"
     ]
   }
 }

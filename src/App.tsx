@@ -1002,6 +1002,7 @@ function App() {
             type:      track!.type,
             unit:      track!.unit,
             unitprice: track!.unitprice,
+            color:     track!.color,
           },
         }));
       const pointGeojson = { type: 'FeatureCollection' as const, features: pointFeatures };
