@@ -41,6 +41,7 @@ const schema = a.schema({
       unitprice: a.float(),
       totalprice:a.float(),
       quan: a.float(),
+      width: a.float(), 
       value: a.float(),
       numpoint: a.integer(),
       trip: a.boolean(),

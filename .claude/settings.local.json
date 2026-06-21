@@ -40,7 +40,11 @@
       "Bash(git commit -m 'Add color field to Export Point geojson output *)",
       "Bash(git commit -m 'Match Export Point locations to Track by track number to export all shared points *)",
       "Bash(git commit -m 'Share point export logic; run it as last pass of Complete Polygon *)",
-      "Bash(git commit -m 'Remove Complete Polygon status messages and Export Point button *)"
+      "Bash(git commit -m 'Remove Complete Polygon status messages and Export Point button *)",
+      "Read(//c/Users/xin_q/AppData/Local/Temp/claude/C--26-01-bcwws-reuse-009/7f777728-9297-4091-9eb7-4b72dfd9e049/tasks/**)",
+      "Bash(kill %1)",
+      "Bash(pkill -f \"vite\")",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
