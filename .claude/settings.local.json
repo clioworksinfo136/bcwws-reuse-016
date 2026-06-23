@@ -48,7 +48,8 @@
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'vite' } | Select-Object ProcessId, CommandLine | Format-Table -AutoSize -Wrap)",
       "PowerShell(Stop-Process -Id 12896,13520 -Force)",
       "mcp__visualize__read_me",
-      "mcp__visualize__show_widget"
+      "mcp__visualize__show_widget",
+      "Bash(npx eslint *)"
     ]
   }
 }

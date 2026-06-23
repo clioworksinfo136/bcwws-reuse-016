@@ -35,6 +35,7 @@ const schema = a.schema({
   Track: a
     .model({
       track: a.integer().required(),
+      trackid: a.integer(),
       geometry: a.string().default('line'),
       ft2: a.float(),
       yd2: a.float(),
