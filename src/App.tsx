@@ -899,6 +899,7 @@ function App() {
       }
 
       if (features.length === 0) {
+        alert("Complete Area: no polygon tracks to process.");
         return;
       }
 
@@ -978,8 +979,10 @@ function App() {
 
       // Last pass: export point-geometry track locations to point.geojson
       await exportPointGeojson();
+      alert("Complete Area computation complete.");
     } catch (err) {
       console.error('handleCompletePolygon error:', err);
+      alert("Complete Area failed: " + String(err));
     }
   }
 
@@ -1235,6 +1238,7 @@ function App() {
 
     setComputeStatus(prev => [...prev, "✓ Compute complete."]);
     setTab("1");
+    alert("Computation complete.");
   }
 
   const onClick = useCallback((e: MapMouseEvent) => {
