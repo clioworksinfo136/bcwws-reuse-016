@@ -199,7 +199,7 @@ function App() {
   const [basemap, setBasemap] = useState("mapbox://styles/mapbox/streets-v12");
   const [pdfMode] = useState(false);
   const [calResult, setCalResult] = useState<number | null>(null);
-  const [computeStatus, setComputeStatus] = useState<string[]>([]);
+  const [, setComputeStatus] = useState<string[]>([]);
   const [showAdminTabs, setShowAdminTabs] = useState<boolean>(false);
 
   //const [clickInfo, setClickInfo] = useState<DataT>();
@@ -334,7 +334,8 @@ function App() {
 
 
 
-  const options = TRACK_DATA
+  const options = [...TRACK_DATA]
+    .sort((a, b) => (a.id == null ? Infinity : Number(a.id)) - (b.id == null ? Infinity : Number(b.id)))
     .map(r => ({ value: r.type, label: `${r.typeid} ${r.type}`, geometry: r.geometry }));
 
   //console.log(AIR_PORTS);
@@ -1217,12 +1218,20 @@ function App() {
     // Pass 3: compute Valve value = number * unitprice * ton
     flushSync(() => setComputeStatus(prev => [...prev, "Pass 3: Computing Valve value = number × unit price × ton..."]));
     const { data: freshValves } = await client.models.Valve.list();
+    let valveCount = 0;
     for (const v of freshValves ?? []) {
       if (v.number != null && v.unitprice != null && v.ton != null) {
         const value = Math.round(v.number * v.unitprice * v.ton * 100) / 100;
         await client.models.Valve.update({ id: v.id, value });
+        valveCount++;
+        flushSync(() => setComputeStatus(prev => [...prev,
+          `  • Valve ${v.valve ?? v.id}: value = number × unitprice × ton = ${v.number} × ${v.unitprice} × ${v.ton} = ${value}`]));
+      } else {
+        flushSync(() => setComputeStatus(prev => [...prev,
+          `  • Valve ${v.valve ?? v.id}: skipped (missing number/unitprice/ton)`]));
       }
     }
+    flushSync(() => setComputeStatus(prev => [...prev, `Pass 3 done — valued ${valveCount} valve(s) of ${(freshValves ?? []).length} total.`]));
 
     setComputeStatus(prev => [...prev, "✓ Compute complete."]);
     setTab("1");
@@ -1334,30 +1343,6 @@ function App() {
           {showAdminTabs ? "▲ Tab" : "▼ Tab"}
         </Button>
       </Flex>
-      {computeStatus.length > 0 && (
-        <div style={{
-          margin: "8px 0",
-          padding: "10px 14px",
-          backgroundColor: "#f0fff4",
-          border: "1px solid #9ae6b4",
-          borderRadius: "6px",
-          fontFamily: "monospace",
-          fontSize: "13px",
-          color: "#22543d",
-        }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "6px" }}>
-            <button
-              onClick={() => setComputeStatus([])}
-              style={{ backgroundColor: "#2f855a", color: "white", border: "none", borderRadius: "4px", padding: "2px 10px", cursor: "pointer", fontSize: "12px" }}
-            >
-              Clear
-            </button>
-          </div>
-          {computeStatus.map((line, i) => (
-            <div key={i}>{line}</div>
-          ))}
-        </div>
-      )}
       <br />
       <Flex direction="row" alignItems="flex-end" className="toolbar-inputs">
 
