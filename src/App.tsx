@@ -1530,6 +1530,23 @@ function App() {
                   />
                 </Source>
 
+                <Source
+                  id="station-line"
+                  type="geojson"
+                  data="https://amplify-di4dla0jbm9sq-main-br-imagesbucket02b0ac5a-lllkvzzhxcwl.s3.us-east-1.amazonaws.com/json/station-line.json"
+                >
+                  <Layer
+                    id="station-line"
+                    type="line"
+                    source="station-line"
+                    paint={{
+                      'line-width': 1,
+                      'line-color': '#c7a0ca',
+                      'line-dasharray': [8, 5],
+                    }}
+                  />
+                </Source>
+
                 <Source id="station" type="geojson" data="/station.geojson">
                   <Layer
                     id="station-points"
