@@ -64,7 +64,7 @@ export const TRACK_DATA: TrackRow[] = [
   { id: 49, typeid1: '#0-6-3', typeid:'#0-6',type: '24 inch 22.5D-Bend', geometry: 'point', ton: 412,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
   { id: 50, typeid1: '#0-6-4', typeid:'#0-6',type: '24 inch 11.25D-Bend', geometry: 'point', ton: 315,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
   { id: 51, typeid1: '#0-6-5', typeid:'#0-6',type: '24-12 inch tee', geometry: 'point', ton: 500,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 52, typeid1: '#0-6-6', typeid:'#0-6',type: '30 inch 90D-Bend', geometry: 'point', ton: 565,unitprice: 31762.00, totalprice: 0, color: 'purple', unit： "TN"   },
+  { id: 52, typeid1: '#0-6-6', typeid:'#0-6',type: '30 inch 90D-Bend', geometry: 'point', ton: 565,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
   { id: 53, typeid1: '#0-6-7', typeid:'#0-6',type: '30 inch 45D-Bend', geometry: 'point', ton: 405,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
   { id: 54, typeid1: '#0-6-8', typeid:'#0-6',type: '30 inch 22.5D-Bend', geometry: 'point', ton: 412,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
   { id: 55, typeid1: '#0-6-9', typeid:'#0-6',type: '30 inch 11.25D-Bend', geometry: 'point', ton: 315,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
