@@ -59,19 +59,19 @@ export const TRACK_DATA: TrackRow[] = [
   { id: 44, typeid1: '#0-44', typeid:'#0-44',type: 'Florida Number 2 Trees', geometry: 'point', unitprice: 5000.00, totalprice:5000.00,color: 'light green', unit: "EA" },
   { id: 45, typeid1: '#0-45', typeid:'#0-45',type: '24 inch Ductile Iron Pipe, Class 250 (Bid Alternate to Base Bid 0-4)', geometry: 'line', unitprice: 437.00, totalprice:7798265.00,color: 'purple', unit: "FT" },
   { id: 46, typeid1: '#0-46', typeid:'#0-46',type: '30 inch Ductile Iron Pipe, Class 250 (Bid Alternate to Base Bid 0-5)', geometry:'line',unitprice:658.0,totalprice:5922.00,color:'purple',unit:"FT"}, 
-  { id: 47, typeid1: '#0-6-1', typeid:'#0-6',type: '24 inch 90D-Bend', geometry: 'point', ton: 565, unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 48, typeid1: '#0-6-2', typeid:'#0-6',type: '24 inch 45D-Bend', geometry: 'point',ton: 405, unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 49, typeid1: '#0-6-3', typeid:'#0-6',type: '24 inch 22.5D-Bend', geometry: 'point', ton: 412,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 50, typeid1: '#0-6-4', typeid:'#0-6',type: '24 inch 11.25D-Bend', geometry: 'point', ton: 315,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 51, typeid1: '#0-6-5', typeid:'#0-6',type: '24-12 inch tee', geometry: 'point', ton: 500,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 52, typeid1: '#0-6-6', typeid:'#0-6',type: '30 inch 90D-Bend', geometry: 'point', ton: 565,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
-  { id: 53, typeid1: '#0-6-7', typeid:'#0-6',type: '30 inch 45D-Bend', geometry: 'point', ton: 405,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-  { id: 54, typeid1: '#0-6-8', typeid:'#0-6',type: '30 inch 22.5D-Bend', geometry: 'point', ton: 412,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-  { id: 55, typeid1: '#0-6-9', typeid:'#0-6',type: '30 inch 11.25D-Bend', geometry: 'point', ton: 315,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-  { id: 56, typeid1: '#0-6-10', typeid:'#0-6',type: '30-12 inch tee', geometry: 'point', ton: 315,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-   { id: 57, typeid1: '#0-6-11', typeid:'#0-6',type: '24 inch Cap', geometry: 'point', ton: 199,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-   { id: 58, typeid1: '#0-6-12', typeid:'#0-6',type: '24-24 inch Tee', geometry: 'point', ton: 1389,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
-   { id: 59, typeid1: '#0-6-13', typeid:'#0-6',type: '30-30 inch Tee', geometry: 'point', ton: 2500,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   }
+  { id: 47, typeid1: '#0-6-1', typeid:'#0-6',type: '24 inch 90D-Bend', geometry: 'point', ton: 0.283, unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 48, typeid1: '#0-6-2', typeid:'#0-6',type: '24 inch 45D-Bend', geometry: 'point',ton: 0.203, unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 49, typeid1: '#0-6-3', typeid:'#0-6',type: '24 inch 22.5D-Bend', geometry: 'point', ton: 0.206,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 50, typeid1: '#0-6-4', typeid:'#0-6',type: '24 inch 11.25D-Bend', geometry: 'point', ton: 0.158,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 51, typeid1: '#0-6-5', typeid:'#0-6',type: '24-12 inch tee', geometry: 'point', ton: 0.134,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 52, typeid1: '#0-6-6', typeid:'#0-6',type: '30 inch 90D-Bend', geometry: 'point', ton: 0.283,unitprice: 31762.00, totalprice: 0, color: 'purple', unit: "TN"   },
+  { id: 53, typeid1: '#0-6-7', typeid:'#0-6',type: '30 inch 45D-Bend', geometry: 'point', ton: 0.203,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+  { id: 54, typeid1: '#0-6-8', typeid:'#0-6',type: '30 inch 22.5D-Bend', geometry: 'point', ton: 0.206,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+  { id: 55, typeid1: '#0-6-9', typeid:'#0-6',type: '30 inch 11.25D-Bend', geometry: 'point', ton: 0.158,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+  { id: 56, typeid1: '#0-6-10', typeid:'#0-6',type: '30-12 inch tee', geometry: 'point', ton: 0.134,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+   { id: 57, typeid1: '#0-6-11', typeid:'#0-6',type: '24 inch Cap', geometry: 'point', ton: 0.100,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+   { id: 58, typeid1: '#0-6-12', typeid:'#0-6',type: '24-24 inch Tee', geometry: 'point', ton: 0.169,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   },
+   { id: 59, typeid1: '#0-6-13', typeid:'#0-6',type: '30-30 inch Tee', geometry: 'point', ton: 1.25,unitprice: 31762.00, totalprice: 0,color: 'purple', unit: "TN"   }
 ];
 
 export const TRACK_TYPES = TRACK_DATA.map(r => r.type);
