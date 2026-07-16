@@ -76,7 +76,7 @@ const client = generateClient<Schema>();
 const locationSelectionSet = [
   'id', 'date', 'time', 'track', 'type', 'diameter',
   'width', 'length', 'lat', 'lng', 'username', 'description',
-  'photos', 'joint', 'createdAt', 'updatedAt',
+  'photos', 'joint', 'station', 'createdAt', 'updatedAt',
 ] as const;
 type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSelectionSet>;
 
@@ -190,6 +190,7 @@ function App() {
   const [length, setLength] = useState<number>(0);
   const [userName, setUserName] = useState<string>();
   const [description, setDescription] = useState<string>("");
+  const [station, setStation] = useState<string>("");
   const joint = "joint";
   const [lat, setLat] = useState(0);
   const [lng, setLng] = useState(0);
@@ -199,7 +200,8 @@ function App() {
   const [basemap, setBasemap] = useState("mapbox://styles/mapbox/streets-v12");
   const [pdfMode] = useState(false);
   const [calResult, setCalResult] = useState<number | null>(null);
-  const [, setComputeStatus] = useState<string[]>([]);
+  const [computeStatus, setComputeStatus] = useState<string[]>([]);
+  const [showComputeLog, setShowComputeLog] = useState(false);
   const [showAdminTabs, setShowAdminTabs] = useState<boolean>(false);
 
   //const [clickInfo, setClickInfo] = useState<DataT>();
@@ -270,6 +272,10 @@ function App() {
   }, [location]);
 
   const [showTrackTypes, setShowTrackTypes] = useState(false);
+
+  // Presigned URL for station-line.json loaded via Amplify Storage (the bucket
+  // is not publicly readable; guest access requires a signed URL).
+  const [stationLineUrl, setStationLineUrl] = useState<string | null>(null);
 
   // Distinct (track, type) pairs from Location, no duplicates, sorted by track.
   const trackTypePairs = useMemo(() => {
@@ -406,6 +412,10 @@ function App() {
     setDescription(e.target.value);
   }
 
+  const handleStation = (e: ChangeEvent<HTMLInputElement>) => {
+    setStation(e.target.value);
+  }
+
   useEffect(() => {
     // Exclude 'comments' (a.ref custom type) from the selection set.
     // When comments is included, observeQuery's internal findIndexByFields
@@ -444,6 +454,14 @@ function App() {
     handleUserName();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    getUrl({ path: 'json/station-line.json' })
+      .then(r => { if (!cancelled) setStationLineUrl(r.url.toString()); })
+      .catch(err => console.error('Failed to resolve station-line.json URL:', err));
+    return () => { cancelled = true; };
+  }, []);
+
 
 
   async function createLocation() {
@@ -452,11 +470,27 @@ function App() {
       return;
     }
 
+    // lat/lng default to 0 and are only set by clicking the map. If neither has
+    // been set (or they were reset after a previous add), the point would be
+    // created at [0°, 0°] ("null island") and render off-screen. Block that and
+    // tell the user to click the map first.
+    if (lat === 0 && lng === 0) {
+      alert(
+        "No point location set.\n\n" +
+        "Click an empty spot on the map to drop a pin first, fill in the values, then click +New."
+      );
+      return;
+    }
+
     handleUserName();
     const name = userName;
-    await client.models.Location.create({
+    // Normalize the time value for the GraphQL Time scalar. The HTML time input
+    // yields "HH:MM", but AppSync's a.time() requires "HH:MM:SS". An empty
+    // string is sent as undefined so the optional field is omitted entirely.
+    const timeValue = !time ? undefined : time.length === 5 ? `${time}:00` : time;
+    const { data: createdLoc, errors: createErrors } = await client.models.Location.create({
       date: date,
-      time: time,
+      time: timeValue,
       track: track,
       type: type,
       diameter: diameter,
@@ -467,7 +501,29 @@ function App() {
       lat: lat,
       lng: lng,
       joint: joint,
+      station: station || undefined,
     });
+    if (createErrors || !createdLoc) {
+      // Amplify error objects carry their useful info on non-enumerable props
+      // (message, errorType, errors[]) that JSON.stringify drops. Pull them out
+      // explicitly so the user sees the real rejection reason instead of '{}'.
+      const errs = Array.isArray(createErrors) ? createErrors : [createErrors];
+      const readable = errs.map((e: any, i: number) => {
+        const parts: string[] = [];
+        if (e?.message) parts.push(`message: ${e.message}`);
+        if (e?.errorType) parts.push(`errorType: ${e.errorType}`);
+        if (e?.errors) parts.push(`errors: ${JSON.stringify(e.errors)}`);
+        const raw = JSON.stringify(e, Object.getOwnPropertyNames(e), 2);
+        return `[${i}] ${parts.join(' | ') || raw}`;
+      }).join('\n') || String(createErrors);
+      alert(
+        "Failed to create point.\n\n" +
+        "The server rejected the new record. Details:\n\n" + readable
+      );
+      console.error('[createLocation] Location.create errors:', createErrors);
+      return;
+    }
+    console.log('[createLocation] Location created:', createdLoc.id, { track, lat, lng });
 
     const { data: matchingTracks } = await client.models.Track.list({ filter: { track: { eq: track } } });
     if (!matchingTracks || matchingTracks.length === 0) {
@@ -492,6 +548,7 @@ function App() {
     setWidth(width);
     setUserName("");
     setDescription("");
+    setStation("");
     setLat(0);
     setLng(0);
   }
@@ -1048,6 +1105,9 @@ function App() {
       return;
     }
 
+    // Activate the compute log panel so the user can see every pass in real time.
+    setShowComputeLog(true);
+
     // Pass 0: populate unitprice and geometry from trackData.ts by matching Location type → TRACK_DATA.
     // Drive off the track numbers actually present in Location and upsert the Track row, so newly
     // added tracks (whose Track record may not be in trackInfoList yet) are also populated.
@@ -1171,9 +1231,20 @@ function App() {
 
       } else if (trackRec.geometry === 'point') {
         const n = pts.length;
-        await client.models.Track.update({ id: trackRec.id, quan: n, numpoint: n });
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Track ${trackRec.track} (point): quan = point count = ${n}`]));
+        // #0-6 fitting types (bends, tees, caps) carry a per-item "ton" weight in
+        // trackData; for these, quan = ton (the tonnage, not the point count). All
+        // other point types keep quan = number of location points.
+        const dataRow = trackRec.type ? TRACK_DATA.find(r => r.type === trackRec.type) : undefined;
+        const ton = dataRow?.ton;
+        if (ton != null) {
+          await client.models.Track.update({ id: trackRec.id, quan: ton, numpoint: n });
+          flushSync(() => setComputeStatus(prev => [...prev,
+            `  • Track ${trackRec.track} (point, ${dataRow!.typeid1}): quan = ton = ${ton}`]));
+        } else {
+          await client.models.Track.update({ id: trackRec.id, quan: n, numpoint: n });
+          flushSync(() => setComputeStatus(prev => [...prev,
+            `  • Track ${trackRec.track} (point): quan = point count = ${n}`]));
+        }
 
       } else if (trackRec.geometry === 'polygon') {
         // Sort by date+time so points are in field-collection order (required for Shoelace)
@@ -1215,8 +1286,15 @@ function App() {
       if (fresh && fresh.unitprice != null && fresh.quan != null) {
         const value = Math.round(fresh.unitprice * fresh.quan * 100) / 100;
         await client.models.Track.update({ id: trackRec.id, value });
+        flushSync(() => setComputeStatus(prev => [...prev,
+          `  • Track ${trackRec.track}: value = unit price × quantity = ${fresh.unitprice} × ${fresh.quan} = ${value}`]));
+      } else {
+        const reason = !fresh ? 'record not found' : (fresh.unitprice == null && fresh.quan == null) ? 'no unit price or quantity' : fresh.unitprice == null ? 'no unit price' : 'no quantity';
+        flushSync(() => setComputeStatus(prev => [...prev,
+          `  • Track ${trackRec.track}: skipped (${reason})`]));
       }
     }
+    flushSync(() => setComputeStatus(prev => [...prev, "Pass 2 done."]));
 
     // Pass 3: compute Valve value = number * unitprice * ton
     flushSync(() => setComputeStatus(prev => [...prev, "Pass 3: Computing Valve value = number × unit price × ton..."]));
@@ -1329,6 +1407,11 @@ function App() {
         <Button onClick={createLocation} backgroundColor={"azure"} color={"red"}>
           + New
         </Button>
+        {!(lat === 0 && lng === 0) && (
+          <span style={{ alignSelf: "center", fontSize: "12px", color: "#22543d" }}>
+            {`Pin: ${lat.toFixed(6)}, ${lng.toFixed(6)}`}
+          </span>
+        )}
         <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
           Compute
         </Button>
@@ -1348,6 +1431,33 @@ function App() {
         </Button>
       </Flex>
       <br />
+      {showComputeLog && computeStatus.length > 0 && (
+        <div style={{
+          margin: '4px 0 8px 0',
+          padding: '8px 12px',
+          border: '1px solid #2f855a',
+          borderRadius: '6px',
+          backgroundColor: '#f0fff4',
+          maxHeight: '240px',
+          overflowY: 'auto',
+          fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
+          fontSize: '12px',
+          lineHeight: '1.5',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+            <strong style={{ color: '#22543d' }}>Compute log</strong>
+            <button
+              onClick={() => setShowComputeLog(false)}
+              style={{ fontSize: '11px', padding: '2px 8px', cursor: 'pointer' }}
+            >
+              Hide
+            </button>
+          </div>
+          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', color: '#22543d' }}>
+            {computeStatus.join('\n')}
+          </pre>
+        </div>
+      )}
       <Flex direction="row" alignItems="flex-end" className="toolbar-inputs">
 
         <label style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1411,7 +1521,7 @@ function App() {
             })}
           </SelectField>
         </label>
-        <label style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+        <label style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: '10px', color: '#666' }}>Description</span>
           <Input
             type="text"
@@ -1419,6 +1529,16 @@ function App() {
             placeholder="description"
             onChange={handleDescription}
             style={{ width: '600px' }}
+          />
+        </label>
+        <label style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: '10px', color: '#666' }}>Station No</span>
+          <Input
+            type="text"
+            value={station}
+            placeholder="station"
+            onChange={handleStation}
+            style={{ width: '120px', height: '42px', boxSizing: 'border-box' }}
           />
         </label>
         <button
@@ -1530,22 +1650,24 @@ function App() {
                   />
                 </Source>
 
-                <Source
-                  id="station-line"
-                  type="geojson"
-                  data="https://amplify-di4dla0jbm9sq-main-br-imagesbucket02b0ac5a-lllkvzzhxcwl.s3.us-east-1.amazonaws.com/json/station-line.json"
-                >
-                  <Layer
+                {stationLineUrl && (
+                  <Source
                     id="station-line"
-                    type="line"
-                    source="station-line"
-                    paint={{
-                      'line-width': 1,
-                      'line-color': '#c7a0ca',
-                      'line-dasharray': [8, 5],
-                    }}
-                  />
-                </Source>
+                    type="geojson"
+                    data={stationLineUrl}
+                  >
+                    <Layer
+                      id="station-line"
+                      type="line"
+                      source="station-line"
+                      paint={{
+                        'line-width': 1,
+                        'line-color': '#c7a0ca',
+                        'line-dasharray': [8, 5],
+                      }}
+                    />
+                  </Source>
+                )}
 
                 <Source id="station" type="geojson" data="/station.geojson">
                   <Layer
