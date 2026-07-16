@@ -523,7 +523,6 @@ function App() {
       console.error('[createLocation] Location.create errors:', createErrors);
       return;
     }
-    console.log('[createLocation] Location created:', createdLoc.id, { track, lat, lng });
 
     const { data: matchingTracks } = await client.models.Track.list({ filter: { track: { eq: track } } });
     if (!matchingTracks || matchingTracks.length === 0) {
@@ -1407,11 +1406,6 @@ function App() {
         <Button onClick={createLocation} backgroundColor={"azure"} color={"red"}>
           + New
         </Button>
-        {!(lat === 0 && lng === 0) && (
-          <span style={{ alignSelf: "center", fontSize: "12px", color: "#22543d" }}>
-            {`Pin: ${lat.toFixed(6)}, ${lng.toFixed(6)}`}
-          </span>
-        )}
         <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
           Compute
         </Button>
