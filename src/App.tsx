@@ -1456,7 +1456,7 @@ function App() {
                   height: "1000px",
                   borderColor: "#000000",
                 }}
-                interactiveLayerIds={['water-points', 'water-points-square', 'lines']}
+                interactiveLayerIds={['water-points', 'water-points-square']}
                 onClick={onClick}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
@@ -1511,22 +1511,6 @@ function App() {
                       'text-color': ['coalesce', ['get', 'color'], '#2b6cb0'],
                       'text-halo-color': '#ffffff',
                       'text-halo-width': 1,
-                    }}
-                  />
-                </Source>
-
-                <Source id="lines" type="vector" url="mapbox://qiaoxin136.6712mnvq">
-                  <Layer
-                    id='lines'
-                    type='line'
-                    source='lines'
-                    source-layer="line-34gbbu"
-                    paint={{
-                      'line-width': 1,
-                      // Use a get expression (https://docs.mapbox.comhttps://docs.mapbox.com/style-spec/reference/expressions/#get)
-                      // to set the line-color to a feature property value.
-                      'line-color': "#c7a0ca",
-                      'line-dasharray': [4, 2]
                     }}
                   />
                 </Source>

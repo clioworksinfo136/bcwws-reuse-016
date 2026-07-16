@@ -27,6 +27,7 @@ const schema = a.schema({
       photos: a.string().array(),
       comments: a.ref('Comment').array(),
       joint: a.string(),
+      station: a.string(),
       dateId: a.id(),
       date_record: a.belongsTo('Date', 'dateId'),
       trackId: a.id(),
