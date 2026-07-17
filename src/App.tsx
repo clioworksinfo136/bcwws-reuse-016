@@ -1555,6 +1555,7 @@ function App() {
             value: "1",
             content: (<>
               <Map
+                key="progress-map"
                 initialViewState={{
                   longitude: -80.13289123074017,
                   latitude: 26.260443058928075,
