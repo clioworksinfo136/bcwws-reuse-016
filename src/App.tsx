@@ -82,7 +82,7 @@ type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSele
 
 const dateSelectionSet = [
   'id', 'date', 'weather', 'hight', 'lowt', 'supervisor',
-  'labor', 'observation', 'remark', 'comment', 'equipment',
+  'labor', 'inspector', 'remark', 'comment', 'equipment',
   'createdAt', 'updatedAt',
 ] as const;
 type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
@@ -230,7 +230,7 @@ function App() {
   const [diLowt, setDiLowt] = useState<number | "">("");
   const [diSupervisor, setDiSupervisor] = useState("");
   const [diLabor, setDiLabor] = useState<number | "">("");
-  const [diObservation, setDiObservation] = useState("");
+  const [diInspector, setDiInspector] = useState("");
   const [diRemark, setDiRemark] = useState("");
   const [diComment, setDiComment] = useState("");
   const [diEquipment, setDiEquipment] = useState("");
@@ -238,7 +238,7 @@ function App() {
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [editDateFields, setEditDateFields] = useState({
     date: "", weather: "", hight: "" as number | "", lowt: "" as number | "",
-    supervisor: "", labor: "" as number | "", observation: "",
+    supervisor: "", labor: "" as number | "", inspector: "",
     remark: "", comment: "", equipment: "",
   });
 
@@ -357,7 +357,7 @@ function App() {
       setDiLowt("");
       setDiSupervisor("");
       setDiLabor("");
-      setDiObservation("");
+      setDiInspector("");
       setDiRemark("");
       setDiComment("");
       setDiEquipment("");
@@ -390,7 +390,7 @@ function App() {
       setDiLowt("");
       setDiSupervisor("");
       setDiLabor("");
-      setDiObservation("");
+      setDiInspector("");
       setDiRemark("");
       setDiComment("");
       setDiEquipment("");
@@ -792,7 +792,7 @@ function App() {
       lowt: diLowt !== "" ? Number(diLowt) : undefined,
       supervisor: diSupervisor || undefined,
       labor: diLabor !== "" ? Number(diLabor) : undefined,
-      observation: diObservation || undefined,
+      inspector: diInspector || undefined,
       remark: diRemark || undefined,
       comment: diComment || undefined,
       equipment: diEquipment || undefined,
@@ -802,7 +802,7 @@ function App() {
     setDiLowt("");
     setDiSupervisor("");
     setDiLabor("");
-    setDiObservation("");
+    setDiInspector("");
     setDiRemark("");
     setDiComment("");
     setDiEquipment("");
@@ -817,7 +817,7 @@ function App() {
       lowt: editDateFields.lowt !== "" ? Number(editDateFields.lowt) : undefined,
       supervisor: editDateFields.supervisor || undefined,
       labor: editDateFields.labor !== "" ? Number(editDateFields.labor) : undefined,
-      observation: editDateFields.observation || undefined,
+      inspector: editDateFields.inspector || undefined,
       remark: editDateFields.remark || undefined,
       comment: editDateFields.comment || undefined,
       equipment: editDateFields.equipment || null,
@@ -2101,7 +2101,7 @@ function App() {
                         <TableCell as="th">Low Temp</TableCell>
                         <TableCell as="th">Supervisor</TableCell>
                         <TableCell as="th">Labor</TableCell>
-                        <TableCell as="th">Observation</TableCell>
+                        <TableCell as="th">Inspector</TableCell>
                         <TableCell as="th">Remark</TableCell>
                         <TableCell as="th">Comment</TableCell>
                         <TableCell as="th">Equipment</TableCell>
@@ -2157,8 +2157,8 @@ function App() {
                             onChange={e => setDiLabor(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
-                          <input type="text" value={diObservation} placeholder="observation"
-                            onChange={e => setDiObservation(e.target.value)} style={{ width: '100%' }} />
+                          <input type="text" value={diInspector} placeholder="inspector"
+                            onChange={e => setDiInspector(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
                           <input type="text" value={diRemark} placeholder="remark"
@@ -2208,8 +2208,8 @@ function App() {
                                 onChange={e => setEf('labor', e.target.value === "" ? "" : Number(e.target.value))} style={{ width: '100%' }} />
                             </TableCell>
                             <TableCell>
-                              <input type="text" value={ef.observation}
-                                onChange={e => setEf('observation', e.target.value)} style={{ width: '100%' }} />
+                              <input type="text" value={ef.inspector}
+                                onChange={e => setEf('inspector', e.target.value)} style={{ width: '100%' }} />
                             </TableCell>
                             <TableCell>
                               <input type="text" value={ef.remark}
@@ -2257,7 +2257,7 @@ function App() {
                             <TableCell>{item.lowt}</TableCell>
                             <TableCell>{item.supervisor}</TableCell>
                             <TableCell>{item.labor}</TableCell>
-                            <TableCell>{item.observation}</TableCell>
+                            <TableCell>{item.inspector}</TableCell>
                             <TableCell>{item.remark}</TableCell>
                             <TableCell>{item.comment}</TableCell>
                             <TableCell>{item.equipment}</TableCell>
@@ -2271,7 +2271,7 @@ function App() {
                                   lowt: item.lowt ?? "",
                                   supervisor: item.supervisor ?? "",
                                   labor: item.labor ?? "",
-                                  observation: item.observation ?? "",
+                                  inspector: item.inspector ?? "",
                                   remark: item.remark ?? "",
                                   comment: item.comment ?? "",
                                   equipment: item.equipment ?? "",
