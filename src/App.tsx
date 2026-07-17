@@ -218,6 +218,7 @@ function App() {
   const [editWidth, setEditWidth] = useState<string>('');
   const [editType, setEditType] = useState<string>('reuse');
   const [editJoint, setEditJoint] = useState<string>("joint");
+  const [editStation, setEditStation] = useState<string>('');
   const [editDate, setEditDate] = useState<string>('');
   const [editTime, setEditTime] = useState<string>('');
   const [popupPhotos, setPopupPhotos] = useState<{ path: string; url: string }[]>([]);
@@ -729,6 +730,7 @@ function App() {
           width
           description
           joint
+          station
         }
       }
     `;
@@ -740,6 +742,7 @@ function App() {
       input.type        = editType;
       input.description = editDescription;
       input.joint       = editJoint;
+      input.station     = editStation !== '' ? editStation : null;
       const parsedTrack    = parseInt(editTrack);
       const parsedDiameter = parseFloat(editDiameter);
       const parsedWidth    = parseFloat(editWidth);
@@ -1352,6 +1355,7 @@ function App() {
       setEditWidth(match?.width != null ? String(match.width) : '');
       setEditType(props.type ?? 'reuse');
       setEditJoint(typeof match?.joint === 'string' ? match.joint : 'joint');
+      setEditStation(match?.station ?? '');
       setEditDate(match?.date ?? props.date ?? '');
       setEditTime((match?.time ?? props.time ?? '').slice(0, 5));
       setFullPhotoIndex(null);
@@ -1826,6 +1830,18 @@ function App() {
                                     boxSizing: 'border-box', resize: 'vertical',
                                     fontFamily: 'inherit',
                                   }}
+                                />
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Station</td>
+                              <td>
+                                <input
+                                  aria-label="Station"
+                                  type="text"
+                                  value={editStation}
+                                  onChange={e => setEditStation(e.target.value)}
+                                  style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
                                 />
                               </td>
                             </tr>
