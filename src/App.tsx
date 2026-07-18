@@ -97,6 +97,24 @@ const TYPE_COLOR_MAP: Record<string, string> = Object.fromEntries(
   TRACK_DATA.filter(r => r.type && r.color).map(r => [r.type, r.color] as [string, string])
 );
 
+// Location rows store only `type`, not `typeid`. Several types share one typeid
+// (e.g. 'Stabilized Subgrade-L' and '-A' are both #0-17), so the check below
+// resolves each point's typeid through this map before comparing.
+const TYPE_TO_TYPEID: Record<string, string> = Object.fromEntries(
+  TRACK_DATA
+    .filter(r => r.type)
+    .map(r => [r.type, r.typeid ?? r.typeid1] as [string, string])
+);
+
+type TrackCheckRow = {
+  track: number;
+  date: string;
+  time: string;
+  typeid: string;
+  type: string;
+  odd: boolean;
+};
+
 
 
 const theme: Theme = {
@@ -273,6 +291,11 @@ function App() {
   }, [location]);
 
   const [showTrackTypes, setShowTrackTypes] = useState(false);
+
+  const [showCheckTrack, setShowCheckTrack] = useState(false);
+  const [checkRunning, setCheckRunning] = useState(false);
+  const [checkRows, setCheckRows] = useState<TrackCheckRow[]>([]);
+  const [checkSummary, setCheckSummary] = useState<string>('');
 
   // Presigned URL for station-line.json loaded via Amplify Storage (the bucket
   // is not publicly readable; guest access requires a signed URL).
@@ -1089,6 +1112,112 @@ function App() {
     return pointFeatures.length;
   }
 
+  // For every Track record, resolve the typeid of each of its Location points and
+  // flag any track whose points don't all share one typeid. Points whose `type`
+  // has no TRACK_DATA match resolve to '(unknown)' and count as a mismatch too.
+  async function handleCheckTrack() {
+    setCheckRunning(true);
+    setShowCheckTrack(true);
+    setCheckRows([]);
+    setCheckSummary('');
+    try {
+      // list() is paginated — follow nextToken so large tables are fully covered.
+      const listAll = async <T,>(
+        fetchPage: (nextToken?: string) => Promise<{ data: T[] | null; nextToken?: string | null }>
+      ): Promise<T[]> => {
+        const all: T[] = [];
+        let token: string | undefined = undefined;
+        do {
+          const page = await fetchPage(token);
+          all.push(...(page.data ?? []));
+          token = page.nextToken ?? undefined;
+        } while (token);
+        return all;
+      };
+
+      const tracks = await listAll(nextToken =>
+        client.models.Track.list({ limit: 1000, nextToken })
+      );
+      const locations = await listAll(nextToken =>
+        client.models.Location.list({
+          selectionSet: ['id', 'track', 'date', 'time', 'type'],
+          limit: 1000,
+          nextToken,
+        })
+      );
+
+      // Bucket every Location point by its track number. (Note: `Map` is the
+      // react-map-gl component in this module, so use a plain record here.)
+      const pointsByTrack: Record<number, typeof locations> = {};
+      for (const loc of locations) {
+        if (loc.track == null) continue;
+        (pointsByTrack[loc.track] ??= []).push(loc);
+      }
+
+      const rows: TrackCheckRow[] = [];
+      let badTracks = 0;
+      let checkedTracks = 0;
+
+      const trackNumbers = [...new Set(
+        tracks.map(t => t.track).filter((t): t is number => t != null)
+      )].sort((a, b) => a - b);
+
+      for (const trackNo of trackNumbers) {
+        const pts = pointsByTrack[trackNo] ?? [];
+        if (pts.length === 0) continue;
+        checkedTracks++;
+
+        const resolved = pts.map(p => ({
+          point: p,
+          typeid: p.type ? (TYPE_TO_TYPEID[p.type] ?? '(unknown)') : '(unknown)',
+        }));
+
+        const distinct = new Set(resolved.map(r => r.typeid));
+        if (distinct.size <= 1 && !distinct.has('(unknown)')) continue;
+
+        badTracks++;
+
+        // The most common typeid is treated as the track's intended one, so the
+        // rows that disagree with it can be highlighted as the likely culprits.
+        const counts: Record<string, number> = {};
+        for (const r of resolved) counts[r.typeid] = (counts[r.typeid] ?? 0) + 1;
+        let dominant = '';
+        let dominantCount = -1;
+        for (const [tid, n] of Object.entries(counts)) {
+          if (tid !== '(unknown)' && n > dominantCount) { dominant = tid; dominantCount = n; }
+        }
+
+        for (const r of resolved) {
+          rows.push({
+            track: trackNo,
+            date: r.point.date ?? '',
+            time: r.point.time ?? '',
+            typeid: r.typeid,
+            type: r.point.type ?? '',
+            odd: r.typeid !== dominant,
+          });
+        }
+      }
+
+      rows.sort((a, b) =>
+        a.track - b.track ||
+        `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`)
+      );
+
+      setCheckRows(rows);
+      setCheckSummary(
+        badTracks === 0
+          ? `All good — ${checkedTracks} track(s) checked, every track has a single typeid.`
+          : `${badTracks} of ${checkedTracks} track(s) have mixed typeids (${rows.length} point(s) listed).`
+      );
+    } catch (err) {
+      console.error('handleCheckTrack error:', err);
+      setCheckSummary('Check failed: ' + String(err));
+    } finally {
+      setCheckRunning(false);
+    }
+  }
+
   async function handleCompute() {
     const LAT_FT = 364000;
     const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
@@ -1551,9 +1680,17 @@ function App() {
           />
         </label>
         <button
+          onClick={handleCheckTrack}
+          disabled={checkRunning}
+          title="Check that every track's points share one typeid"
+          style={{ alignSelf: 'center', marginLeft: 'auto', fontSize: '18px', fontWeight: 'bold', color: '#1a365d', whiteSpace: 'nowrap', background: '#ebf4ff', border: '1px solid #1a365d', borderRadius: '6px', padding: '4px 12px', cursor: checkRunning ? 'wait' : 'pointer' }}
+        >
+          {checkRunning ? 'Checking…' : 'Check Track'}
+        </button>
+        <button
           onClick={() => setShowTrackTypes(true)}
           title="Show all track / type values"
-          style={{ alignSelf: 'center', marginLeft: 'auto', fontSize: '18px', fontWeight: 'bold', color: '#1a365d', whiteSpace: 'nowrap', background: '#ebf4ff', border: '1px solid #1a365d', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }}
+          style={{ alignSelf: 'center', fontSize: '18px', fontWeight: 'bold', color: '#1a365d', whiteSpace: 'nowrap', background: '#ebf4ff', border: '1px solid #1a365d', borderRadius: '6px', padding: '4px 12px', cursor: 'pointer' }}
         >
           Max Track: {maxTrack ?? '—'}
         </button>
@@ -2551,6 +2688,64 @@ function App() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {showCheckTrack && (
+        <div
+          onClick={() => setShowCheckTrack(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: '8px', padding: '16px', width: '760px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+              <h3 style={{ margin: 0, color: '#1a365d' }}>Check Track — typeid consistency</h3>
+              <button
+                onClick={() => setShowCheckTrack(false)}
+                style={{ border: 'none', background: 'transparent', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: '13px', color: checkRows.length ? '#9b2c2c' : '#276749' }}>
+              {checkRunning ? 'Checking…' : checkSummary}
+            </p>
+            {checkRows.length > 0 && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #1a365d', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 8px', width: '70px' }}>Track</th>
+                    <th style={{ padding: '4px 8px', width: '110px' }}>Date</th>
+                    <th style={{ padding: '4px 8px', width: '90px' }}>Time</th>
+                    <th style={{ padding: '4px 8px', width: '90px' }}>TypeID</th>
+                    <th style={{ padding: '4px 8px' }}>Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {checkRows.map((r, i) => (
+                    <tr
+                      key={`${r.track}|${r.date}|${r.time}|${r.type}|${i}`}
+                      style={{
+                        borderBottom: '1px solid #e2e8f0',
+                        background: r.odd ? '#fff5f5' : i % 2 ? '#f7fafc' : '#fff',
+                        color: r.odd ? '#9b2c2c' : 'inherit',
+                        fontWeight: r.odd ? 600 : 400,
+                      }}
+                    >
+                      <td style={{ padding: '4px 8px' }}>{r.track}</td>
+                      <td style={{ padding: '4px 8px' }}>{r.date || '—'}</td>
+                      <td style={{ padding: '4px 8px' }}>{r.time || '—'}</td>
+                      <td style={{ padding: '4px 8px' }}>{r.typeid}</td>
+                      <td style={{ padding: '4px 8px' }}>{r.type || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
