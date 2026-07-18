@@ -77,6 +77,7 @@ const schema = a.schema({
       supervisor: a.string(),
       inspector: a.string(),
       labor: a.integer(),
+      observation: a.string(),
       remark: a.string(),
       comment: a.string(),
       equipment: a.string(),
