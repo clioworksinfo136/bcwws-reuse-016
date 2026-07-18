@@ -897,6 +897,8 @@ function App() {
 
   async function handleCompletePolygon() {
     try {
+      setShowComputeLog(true);
+      flushSync(() => setComputeStatus(["Pass 1: Computing polygon areas from track locations..."]));
       const LAT_FT = 364000;
       const features: {
         type: 'Feature';
@@ -958,49 +960,53 @@ function App() {
       }
 
       if (features.length === 0) {
-        alert("Complete Area: no polygon tracks to process.");
-        return;
+        flushSync(() => setComputeStatus(prev => [...prev, "Pass 1: no polygon tracks to process — skipping polygon.geojson."]));
+      } else {
+        flushSync(() => setComputeStatus(prev => [...prev, `Pass 1 done — computed ${features.length} polygon area(s).`]));
+
+        // Add a polygon covering the White House (Washington, DC)
+        features.push({
+          type: 'Feature' as const,
+          geometry: {
+            type: 'Polygon' as const,
+            coordinates: [[
+              [-77.0387, 38.8946],
+              [-77.0387, 38.8987],
+              [-77.0344, 38.8987],
+              [-77.0344, 38.8946],
+              [-77.0387, 38.8946],
+            ]],
+          },
+          properties: {
+            id:        'white-house',
+            track:     null,
+            geometry:  'polygon',
+            ft2:       null,
+            yd2:       null,
+            unitprice: null,
+            quan:      null,
+            value:     null,
+            numpoint:  4,
+            unit:      null,
+            lastdate:  null,
+            color:     'white',
+            cost:      false,
+          },
+        });
+
+        flushSync(() => setComputeStatus(prev => [...prev, "Pass 2: Uploading polygon.geojson..."]));
+        const geojson = { type: 'FeatureCollection' as const, features };
+        const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
+        await uploadData({
+          path: 'geojson/polygon.geojson',
+          data: blob,
+          options: { contentType: 'application/json' },
+        }).result;
+        flushSync(() => setComputeStatus(prev => [...prev, `Pass 2 done — uploaded ${features.length} polygon feature(s).`]));
       }
 
-      // Add a polygon covering the White House (Washington, DC)
-      features.push({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'Polygon' as const,
-          coordinates: [[
-            [-77.0387, 38.8946],
-            [-77.0387, 38.8987],
-            [-77.0344, 38.8987],
-            [-77.0344, 38.8946],
-            [-77.0387, 38.8946],
-          ]],
-        },
-        properties: {
-          id:        'white-house',
-          track:     null,
-          geometry:  'polygon',
-          ft2:       null,
-          yd2:       null,
-          unitprice: null,
-          quan:      null,
-          value:     null,
-          numpoint:  4,
-          unit:      null,
-          lastdate:  null,
-          color:     'white',
-          cost:      false,
-        },
-      });
-
-      const geojson = { type: 'FeatureCollection' as const, features };
-      const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/json' });
-      await uploadData({
-        path: 'geojson/polygon.geojson',
-        data: blob,
-        options: { contentType: 'application/json' },
-      }).result;
-
       // Export locations on line-geometry tracks as line.geojson (one LineString per track)
+      flushSync(() => setComputeStatus(prev => [...prev, "Pass 3: Building and uploading line.geojson..."]));
       const lineTracks = trackInfoList.filter(t => t.geometry === 'line');
       const lineFeatures = [];
       for (const trackRec of lineTracks) {
@@ -1035,12 +1041,17 @@ function App() {
         data: new Blob([JSON.stringify(lineGeojson, null, 2)], { type: 'application/json' }),
         options: { contentType: 'application/json' },
       }).result;
+      flushSync(() => setComputeStatus(prev => [...prev, `Pass 3 done — uploaded ${lineFeatures.length} line feature(s).`]));
 
       // Last pass: export point-geometry track locations to point.geojson
-      await exportPointGeojson();
+      flushSync(() => setComputeStatus(prev => [...prev, "Pass 4: Building and uploading point.geojson..."]));
+      const pointCount = await exportPointGeojson();
+      flushSync(() => setComputeStatus(prev => [...prev, `Pass 4 done — uploaded ${pointCount} point feature(s).`]));
+      flushSync(() => setComputeStatus(prev => [...prev, "Complete Area computation complete."]));
       alert("Complete Area computation complete.");
     } catch (err) {
       console.error('handleCompletePolygon error:', err);
+      flushSync(() => setComputeStatus(prev => [...prev, `Complete Area failed: ${String(err)}`]));
       alert("Complete Area failed: " + String(err));
     }
   }

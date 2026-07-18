@@ -49,7 +49,11 @@
       "PowerShell(Stop-Process -Id 12896,13520 -Force)",
       "mcp__visualize__read_me",
       "mcp__visualize__show_widget",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "Bash(aws --version)",
+      "Bash(aws sts *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(aws s3api *)"
     ]
   }
 }
