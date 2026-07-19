@@ -53,7 +53,11 @@
       "Bash(aws --version)",
       "Bash(aws sts *)",
       "Bash(echo \"exit: $?\")",
-      "Bash(aws s3api *)"
+      "Bash(aws s3api *)",
+      "Bash(node -e \"const m=require\\('react-map-gl'\\); console.log\\(['useControl','Marker','Source','Layer'].map\\(k=>k+':'+\\(k in m\\)\\).join\\(' '\\)\\)\")",
+      "Bash(node -p \"require\\('react-map-gl/package.json'\\).version\")",
+      "Bash(rm -f /tmp/hav.mjs)",
+      "Bash(git stash *)"
     ]
   }
 }

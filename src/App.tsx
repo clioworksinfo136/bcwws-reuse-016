@@ -27,7 +27,7 @@ import {
   Map,
   Source,
   Layer,
-  //useControl,
+  useControl,
   //Popup,
   Marker,
   NavigationControl,
@@ -115,6 +115,13 @@ type TrackCheckRow = {
   odd: boolean;
 };
 
+function splitCommaList(value?: string | null): string[] {
+  return (value ?? '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+
 
 
 const theme: Theme = {
@@ -165,6 +172,50 @@ interface PopupInfo {
   longitude: number;
   latitude: number;
   properties: WaterFeatureProperties;
+}
+
+// Ruler toggle rendered into the map's own top-right control stack via
+// useControl, so it lands directly below the geolocate button without any
+// hard-coded pixel offsets.
+function RulerControl({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  // The DOM button is built once, so a directly captured onToggle would go
+  // stale after the first render — read it through a ref instead.
+  const onToggleRef = useRef(onToggle);
+  onToggleRef.current = onToggle;
+
+  useControl(
+    () => {
+      const container = document.createElement('div');
+      container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.title = 'Measure distance between two points';
+      button.setAttribute('aria-label', 'Measure distance between two points');
+      button.style.fontSize = '15px';
+      button.style.lineHeight = '29px';
+      button.textContent = '📏';
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onToggleRef.current();
+      });
+      container.appendChild(button);
+      buttonRef.current = button;
+      return {
+        onAdd: () => container,
+        onRemove: () => container.remove(),
+      };
+    },
+    { position: 'top-right' }
+  );
+
+  // Tint the button while measuring so the active mode is obvious.
+  useEffect(() => {
+    const button = buttonRef.current;
+    if (button) button.style.backgroundColor = active ? '#bee3f8' : '';
+  }, [active]);
+
+  return null;
 }
 
 
@@ -230,10 +281,13 @@ function App() {
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
   const [hoverInfo, setHoverInfo] = useState<{ longitude: number; latitude: number; track: string; date: string; type: string } | null>(null);
   const [cursor, setCursor] = useState<string>('grab');
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
   const [editTrack, setEditTrack] = useState<string>('');
   const [editDescription, setEditDescription] = useState<string>('');
   const [editDiameter, setEditDiameter] = useState<string>('');
   const [editWidth, setEditWidth] = useState<string>('');
+  const [editLength, setEditLength] = useState<string>('');
   const [editType, setEditType] = useState<string>('reuse');
   const [editJoint, setEditJoint] = useState<string>("joint");
   const [editStation, setEditStation] = useState<string>('');
@@ -312,6 +366,8 @@ function App() {
   }, [location]);
 
   const [showTrackTypes, setShowTrackTypes] = useState(false);
+
+  const [dailyReportItem, setDailyReportItem] = useState<DateItem | null>(null);
 
   const [showCheckTrack, setShowCheckTrack] = useState(false);
   const [checkRunning, setCheckRunning] = useState(false);
@@ -774,6 +830,7 @@ function App() {
           type
           diameter
           width
+          length
           description
           joint
           station
@@ -792,9 +849,13 @@ function App() {
       const parsedTrack    = parseInt(editTrack);
       const parsedDiameter = parseFloat(editDiameter);
       const parsedWidth    = parseFloat(editWidth);
+      const parsedLength   = parseFloat(editLength);
       if (editTrack    !== '' && !isNaN(parsedTrack))    input.track    = parsedTrack;
       if (editDiameter !== '' && !isNaN(parsedDiameter)) input.diameter = parsedDiameter;
       input.width = editWidth !== '' && !isNaN(parsedWidth) ? parsedWidth : null;
+      // length is required in the schema, so a blank box leaves the stored value
+      // untouched rather than sending null (which the server would reject).
+      if (editLength !== '' && !isNaN(parsedLength)) input.length = parsedLength;
 
       console.log('Updating via GraphQL:', input);
       const result = await (client as any).graphql({ query: mutation, variables: { input } });
@@ -1487,7 +1548,41 @@ function App() {
     alert("Computation complete.");
   }
 
+  // Toggling the ruler always starts from a clean slate, and closes any open
+  // attribute popup so the two modes never fight over the same click.
+  const toggleMeasure = useCallback(() => {
+    setMeasureMode(prev => !prev);
+    setMeasurePoints([]);
+    setPopupInfo(null);
+  }, []);
+
+  const measureDistanceFt = useMemo(() => {
+    if (measurePoints.length < 2) return null;
+    const [[lng1, lat1], [lng2, lat2]] = measurePoints;
+    return haversineDistanceFt(lat1, lng1, lat2, lng2);
+  }, [measurePoints]);
+
+  const measureLineGeoJSON = useMemo(() => ({
+    type: 'FeatureCollection' as const,
+    features: measurePoints.length === 2
+      ? [{
+          type: 'Feature' as const,
+          geometry: { type: 'LineString' as const, coordinates: measurePoints },
+          properties: {},
+        }]
+      : [],
+  }), [measurePoints]);
+
   const onClick = useCallback((e: MapMouseEvent) => {
+    // While measuring, every click feeds the ruler — ignore features entirely so
+    // clicking an existing data point measures instead of opening its popup.
+    // A click after a completed measurement starts the next one.
+    if (measureMode) {
+      const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+      setMeasurePoints(prev => (prev.length >= 2 ? [point] : [...prev, point]));
+      return;
+    }
+
     const feature = e.features?.[0];
 
     //console.log("clicked feature =", feature);
@@ -1519,6 +1614,7 @@ function App() {
       setEditDescription(props.description ?? '');
       setEditDiameter(props.diameter != null ? String(props.diameter) : '');
       setEditWidth(match?.width != null ? String(match.width) : '');
+      setEditLength(match?.length != null ? String(match.length) : '');
       setEditType(props.type ?? 'reuse');
       setEditJoint(typeof match?.joint === 'string' ? match.joint : 'joint');
       setEditStation(match?.station ?? '');
@@ -1533,7 +1629,7 @@ function App() {
           .catch(err => console.error('Failed to resolve photo URLs:', err));
       }
     };
-  }, [location, pdfMode]);
+  }, [location, pdfMode, measureMode]);
 
   const onMouseEnter = useCallback(() => setCursor('pointer'), []);
   const onMouseLeave = useCallback(() => { setCursor('grab'); setHoverInfo(null); }, []);
@@ -1754,7 +1850,7 @@ function App() {
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onMouseMove={onMouseMove}
-                cursor={cursor}
+                cursor={measureMode ? 'crosshair' : cursor}
               >
                 <Source id="water-data" type="geojson" data={coloredLocationGeoJSON}>
 
@@ -1992,6 +2088,19 @@ function App() {
                               </td>
                             </tr>
                             <tr>
+                              <td>Length</td>
+                              <td>
+                                <input
+                                  aria-label="Length"
+                                  type="number"
+                                  step="any"
+                                  value={editLength}
+                                  onChange={e => setEditLength(e.target.value)}
+                                  style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
+                                />
+                              </td>
+                            </tr>
+                            <tr>
                               <td>Description</td>
                               <td>
                                 <textarea
@@ -2157,6 +2266,70 @@ function App() {
                   trackUserLocation={true}
                   // Draw an arrow next to the location dot to indicate which direction the device is heading.
                   showUserHeading={true} />
+                <RulerControl active={measureMode} onToggle={toggleMeasure} />
+                {measureMode && (
+                  <>
+                    <Source id="measure-line" type="geojson" data={measureLineGeoJSON}>
+                      <Layer
+                        id="measure-line-layer"
+                        type="line"
+                        source="measure-line"
+                        paint={{
+                          'line-color': '#e53e3e',
+                          'line-width': 2,
+                          'line-dasharray': [2, 1],
+                        }}
+                      />
+                    </Source>
+                    {measurePoints.map((point, i) => (
+                      <Marker key={i} longitude={point[0]} latitude={point[1]} anchor="center">
+                        <div style={{
+                          width: '10px', height: '10px', borderRadius: '50%',
+                          background: '#e53e3e', border: '2px solid #fff',
+                          boxShadow: '0 0 0 1px rgba(0,0,0,0.35)',
+                        }} />
+                      </Marker>
+                    ))}
+                    <div style={{
+                      position: 'absolute',
+                      top: '10px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: 'rgba(255,255,255,0.95)',
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      boxShadow: '0 1px 5px rgba(0,0,0,0.25)',
+                      fontSize: '12px',
+                      lineHeight: 1.4,
+                      whiteSpace: 'nowrap',
+                      zIndex: 1,
+                    }}>
+                      {measureDistanceFt == null ? (
+                        <span>
+                          {measurePoints.length === 0
+                            ? 'Click the first point to measure from.'
+                            : 'Click the second point.'}
+                        </span>
+                      ) : (
+                        <span>
+                          <strong>{measureDistanceFt.toLocaleString(undefined, { maximumFractionDigits: 1 })} ft</strong>
+                        </span>
+                      )}
+                      {measurePoints.length > 0 && (
+                        <button
+                          onClick={() => setMeasurePoints([])}
+                          style={{
+                            marginLeft: '10px', fontSize: '11px', padding: '2px 8px',
+                            border: '1px solid #cbd5e0', borderRadius: '4px',
+                            background: '#fff', cursor: 'pointer',
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
                 <RadioGroupField legend="Row" name="row" direction="row" onChange={(e) => change_basemap(e.target.value)} defaultValue="street">
                   <Radio value="light" >Light</Radio>
                   <Radio value="street">Street</Radio>
@@ -2478,7 +2651,8 @@ function App() {
                                   eonu: item.eonu ?? "",
                                 });
                               }} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Modify</button>
-                              <button onClick={() => { if (window.confirm(`Delete record for ${item.date}?`)) client.models.Date.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Delete</button>
+                              <button onClick={() => { if (window.confirm(`Delete record for ${item.date}?`)) client.models.Date.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Delete</button>
+                              <button onClick={() => setDailyReportItem(item)} style={{ backgroundColor: '#1a365d', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Daily Report</button>
                             </TableCell>
                           </TableRow>
                         );
@@ -2786,6 +2960,56 @@ function App() {
           </div>
         </div>
       )}
+
+      {dailyReportItem && (() => {
+        const equipmentList = splitCommaList(dailyReportItem.equipment);
+        const eonuSet = new Set(splitCommaList(dailyReportItem.eonu).map(s => s.toLowerCase()));
+        return (
+          <div
+            onClick={() => setDailyReportItem(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: '8px', padding: '16px', width: '480px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h3 style={{ margin: 0, color: '#1a365d' }}>Daily Report — {dailyReportItem.date}</h3>
+                <button
+                  onClick={() => setDailyReportItem(null)}
+                  style={{ border: 'none', background: 'transparent', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+              <h4 style={{ margin: '0 0 8px', color: '#1a365d' }}>Contractor's Equipment</h4>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #1a365d', textAlign: 'left' }}>
+                    <th style={{ padding: '4px 8px' }}>Description</th>
+                    <th style={{ padding: '4px 8px', width: '90px' }}>No. Used</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {equipmentList.length === 0 ? (
+                    <tr>
+                      <td style={{ padding: '4px 8px', color: '#666' }} colSpan={2}>No equipment recorded</td>
+                    </tr>
+                  ) : (
+                    equipmentList.map((desc, i) => (
+                      <tr key={`${desc}|${i}`} style={{ borderBottom: '1px solid #e2e8f0', background: i % 2 ? '#f7fafc' : '#fff' }}>
+                        <td style={{ padding: '4px 8px' }}>{desc}</td>
+                        <td style={{ padding: '4px 8px' }}>{eonuSet.has(desc.toLowerCase()) ? 0 : 1}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
     </main>
   );
