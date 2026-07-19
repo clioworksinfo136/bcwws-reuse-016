@@ -82,7 +82,7 @@ type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSele
 
 const dateSelectionSet = [
   'id', 'date', 'weather', 'hight', 'lowt', 'supervisor',
-  'labor', 'inspector', 'remark', 'comment', 'equipment',
+  'labor', 'inspector', 'remark', 'comment', 'equipment', 'eonu',
   'createdAt', 'updatedAt',
 ] as const;
 type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
@@ -253,12 +253,13 @@ function App() {
   const [diRemark, setDiRemark] = useState("");
   const [diComment, setDiComment] = useState("");
   const [diEquipment, setDiEquipment] = useState("");
+  const [diEonu, setDiEonu] = useState("");
 
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [editDateFields, setEditDateFields] = useState({
     date: "", weather: "", hight: "" as number | "", lowt: "" as number | "",
     supervisor: "", labor: "" as number | "", inspector: "",
-    remark: "", comment: "", equipment: "",
+    remark: "", comment: "", equipment: "", eonu: "",
   });
 
   const [trackInfoList, setTrackInfoList] = useState<TrackInfoItem[]>([]);
@@ -270,6 +271,26 @@ function App() {
     }
     return map;
   }, [trackInfoList]);
+
+  // Track number → "typeid type" label taken from the Track table, used as the
+  // Type column in History Data instead of the Location row's own type.
+  const trackTypeLabelMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    for (const t of trackInfoList) {
+      if (t.track == null) continue;
+      const label = [t.typeid, t.type].filter(Boolean).join(' ');
+      if (label) map[t.track] = label;
+    }
+    return map;
+  }, [trackInfoList]);
+
+  // Falls back to the Location row's own type when the track has no Track record
+  // (or that record has neither typeid nor type) so the column is never blank.
+  const historyTypeLabel = useCallback(
+    (loc: { track?: number | null; type?: string | null }) =>
+      (loc.track != null ? trackTypeLabelMap[loc.track] : undefined) ?? loc.type ?? '',
+    [trackTypeLabelMap]
+  );
 
   const coloredLocationGeoJSON = useMemo(() => ({
     ...locationGeoJSON,
@@ -331,11 +352,11 @@ function App() {
       let cmp = 0;
       if (key === 'date')   cmp = `${a.date ?? ''}T${a.time ?? ''}`.localeCompare(`${b.date ?? ''}T${b.time ?? ''}`);
       if (key === 'track')  cmp = (a.track ?? 0) - (b.track ?? 0);
-      if (key === 'type')   cmp = (a.type ?? '').localeCompare(b.type ?? '');
+      if (key === 'type')   cmp = historyTypeLabel(a).localeCompare(historyTypeLabel(b));
       if (key === 'images') cmp = (a.photos?.length ?? 0) - (b.photos?.length ?? 0);
       return cmp * dir;
     });
-  }, [location, historySort]);
+  }, [location, historySort, historyTypeLabel]);
 
   const toggleHistorySort = (key: 'date' | 'track' | 'type' | 'images') =>
     setHistorySort(prev => prev?.key === key ? { key, dir: prev.dir === 1 ? -1 : 1 } : { key, dir: 1 });
@@ -385,6 +406,7 @@ function App() {
       setDiRemark("");
       setDiComment("");
       setDiEquipment("");
+      setDiEonu("");
     }
   };
 
@@ -418,6 +440,7 @@ function App() {
       setDiRemark("");
       setDiComment("");
       setDiEquipment("");
+      setDiEonu("");
     }
   }
 
@@ -822,6 +845,7 @@ function App() {
       remark: diRemark || undefined,
       comment: diComment || undefined,
       equipment: diEquipment || undefined,
+      eonu: diEonu || undefined,
     });
     setDiWeather("");
     setDiHight("");
@@ -832,6 +856,7 @@ function App() {
     setDiRemark("");
     setDiComment("");
     setDiEquipment("");
+    setDiEonu("");
   }
 
   function saveDateInfo(id: string) {
@@ -847,6 +872,7 @@ function App() {
       remark: editDateFields.remark || undefined,
       comment: editDateFields.comment || undefined,
       equipment: editDateFields.equipment || null,
+      eonu: editDateFields.eonu || null,
     });
     setEditingDateId(null);
   }
@@ -2225,7 +2251,7 @@ function App() {
                           <TableCell /* width="15%" */>{location.time}</TableCell>
                           <TableCell /* width="10%" */>{location.track}</TableCell>
                           <TableCell /* width="10%" */>{location.width != null ? location.width : ''}</TableCell>
-                          <TableCell /* width="15%" */>{location.type}</TableCell>
+                          <TableCell /* width="15%" */>{historyTypeLabel(location)}</TableCell>
                           <TableCell /* width="15%" */>{location.username}</TableCell>
                           <TableCell /* width="15%" */>{location.length != null ? Math.round(Number(location.length)) : ''}</TableCell>
                           <TableCell /* width="15%" */>{location.photos ? location.photos.length : 0}</TableCell>
@@ -2269,6 +2295,7 @@ function App() {
                         <TableCell as="th">Remark</TableCell>
                         <TableCell as="th">Comment</TableCell>
                         <TableCell as="th">Equipment</TableCell>
+                        <TableCell as="th">Eonu</TableCell>
                         <TableCell as="th">
                           <select onChange={e => { if (e.target.value) { setDiEquipment(prev => prev ? prev + ', ' + e.target.value : e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px' }}>
                             <option value="">+List</option>
@@ -2335,6 +2362,10 @@ function App() {
                         <TableCell>
                           <input type="text" value={diEquipment} placeholder="equipment"
                             onChange={e => setDiEquipment(e.target.value)} style={{ width: '100%' }} />
+                        </TableCell>
+                        <TableCell>
+                          <input type="text" value={diEonu} placeholder="eonu"
+                            onChange={e => setDiEonu(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
                           <button onClick={createDateInfo} disabled={!date} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Add</button>
@@ -2409,6 +2440,10 @@ function App() {
                               <button onClick={() => setEf('equipment', '')} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
                             </TableCell>
                             <TableCell>
+                              <input type="text" value={ef.eonu}
+                                onChange={e => setEf('eonu', e.target.value)} style={{ width: '100%' }} />
+                            </TableCell>
+                            <TableCell>
                               <button onClick={() => saveDateInfo(item.id)} style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Save</button>
                               <button onClick={() => setEditingDateId(null)} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>
                             </TableCell>
@@ -2425,6 +2460,7 @@ function App() {
                             <TableCell>{item.remark}</TableCell>
                             <TableCell>{item.comment}</TableCell>
                             <TableCell>{item.equipment}</TableCell>
+                            <TableCell>{item.eonu}</TableCell>
                             <TableCell>
                               <button onClick={() => {
                                 setEditingDateId(item.id);
@@ -2439,6 +2475,7 @@ function App() {
                                   remark: item.remark ?? "",
                                   comment: item.comment ?? "",
                                   equipment: item.equipment ?? "",
+                                  eonu: item.eonu ?? "",
                                 });
                               }} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Modify</button>
                               <button onClick={() => { if (window.confirm(`Delete record for ${item.date}?`)) client.models.Date.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Delete</button>
