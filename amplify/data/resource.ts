@@ -81,6 +81,7 @@ const schema = a.schema({
       remark: a.string(),
       comment: a.string(),
       equipment: a.string(),
+      eonu: a.string(),
       locations: a.hasMany('Location', 'dateId'),
     })
     .authorization((allow) => [allow.publicApiKey()]),
