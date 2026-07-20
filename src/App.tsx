@@ -2600,6 +2600,7 @@ function App() {
                         <TableCell as="th" onClick={() => toggleHistorySort('date')} style={{ cursor: 'pointer', userSelect: 'none' }}>Date{historySortArrow('date')}</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>Time</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('track')} style={{ cursor: 'pointer', userSelect: 'none' }}>Track{historySortArrow('track')}</TableCell>
+                        <TableCell as="th">Station</TableCell>
                         <TableCell as="th">Width</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type{historySortArrow('type')}</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>User</TableCell>
@@ -2628,6 +2629,7 @@ function App() {
                           <TableCell /* width="15%" */>{location.date}</TableCell>
                           <TableCell /* width="15%" */>{location.time}</TableCell>
                           <TableCell /* width="10%" */>{location.track}</TableCell>
+                          <TableCell>{location.station ?? '—'}</TableCell>
                           <TableCell /* width="10%" */>{location.width != null ? location.width : ''}</TableCell>
                           <TableCell /* width="15%" */>{historyTypeLabel(location)}</TableCell>
                           <TableCell /* width="15%" */>{location.username}</TableCell>
