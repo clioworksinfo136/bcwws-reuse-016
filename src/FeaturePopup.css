@@ -94,6 +94,17 @@
   color: #c00;
 }
 
+.popup-btn-success {
+  border-color: #22543d;
+  background: #22543d;
+  color: #fff;
+}
+
+.popup-btn-sm {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
 /* Match the native "Choose Files" button of the file input */
 .popup-file-input {
   font-size: 11px;

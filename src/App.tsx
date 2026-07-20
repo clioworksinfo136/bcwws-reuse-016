@@ -878,6 +878,84 @@ function App() {
     }
   }
 
+  // Recompute the `length` field for every Location point on one track:
+  // sort by date+time ascending, the earliest point gets length 0, and each
+  // later point gets its haversine distance (feet) from the point before it.
+  async function handleCalLength(track: number) {
+    try {
+      // Pull every point on this track, following nextToken so a track with more
+      // than one page of points is still fully covered.
+      type LenPoint = { id: string; date?: string | null; time?: string | null; lat?: number | null; lng?: number | null };
+      const pts: LenPoint[] = [];
+      let token: string | undefined = undefined;
+      do {
+        const page: { data: LenPoint[] | null; nextToken?: string | null } =
+          await client.models.Location.list({
+            filter: { track: { eq: track } },
+            selectionSet: ['id', 'date', 'time', 'lat', 'lng'],
+            limit: 1000,
+            nextToken: token,
+          });
+        pts.push(...(page.data ?? []));
+        token = page.nextToken ?? undefined;
+      } while (token);
+
+      if (pts.length === 0) {
+        alert(`Cal Length: no points found on track ${track}.`);
+        return;
+      }
+
+      // Earliest → latest by combined date+time.
+      pts.sort((a, b) =>
+        `${a.date ?? ''}T${a.time ?? ''}`.localeCompare(`${b.date ?? ''}T${b.time ?? ''}`)
+      );
+
+      const mutation = /* GraphQL */ `
+        mutation UpdateLocation($input: UpdateLocationInput!) {
+          updateLocation(input: $input) { id length }
+        }
+      `;
+
+      const updated: { id: string; length: number }[] = [];
+      let prev: { lat?: number | null; lng?: number | null } | null = null;
+      for (const p of pts) {
+        let length: number;
+        if (prev == null) {
+          length = 0;
+        } else if (
+          p.lat != null && p.lng != null &&
+          prev.lat != null && prev.lng != null
+        ) {
+          length = Math.round(haversineDistanceFt(prev.lat, prev.lng, p.lat, p.lng) * 100) / 100;
+        } else {
+          // Missing coordinates on either endpoint — can't measure, store 0.
+          length = 0;
+        }
+        await (client as any).graphql({
+          query: mutation,
+          variables: { input: { id: p.id, length } },
+        });
+        updated.push({ id: p.id, length });
+        prev = p;
+      }
+
+      // Patch local state so the History Data table and map reflect the new
+      // lengths immediately, without waiting on the observeQuery subscription.
+      // Note: `Map` is the react-map-gl component in this module, so use a plain record.
+      const lengthById: Record<string, number> = {};
+      for (const u of updated) lengthById[u.id] = u.length;
+      setLocation(prevLocs => prevLocs.map(loc =>
+        loc.id in lengthById ? { ...loc, length: lengthById[loc.id] } : loc
+      ));
+
+      alert(`Cal Length: updated ${updated.length} point(s) on track ${track}.`);
+      setPopupInfo(null);
+    } catch (err) {
+      console.error('handleCalLength error:', err);
+      alert('Cal Length failed: ' + String(err));
+    }
+  }
+
   function haversineDistanceFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
     const R = 20902464; // Earth radius in feet
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -2156,33 +2234,52 @@ function App() {
                           placeholder="new picture"
                           className="popup-file-input"
                         /><br /><br />
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button
-                            className="popup-btn"
-                            onClick={(e) => {
-                              console.log(popupInfo.properties);
-                              handleSubmit(e, popupInfo.properties.id);
-                              setPopupInfo(null);
-                            }}
-                          >
-                            Upload
-                          </button>
-                          <button
-                            className="popup-btn popup-btn-danger"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteLocation(popupInfo.properties.id);
-                              setPopupInfo(null);
-                            }}
-                          >
-                            Delete
-                          </button>
-                          <button
-                            className="popup-btn popup-btn-primary"
-                            onClick={(e) => { e.stopPropagation(); handleUpdatePopup(popupInfo.properties.id); }}
-                          >
-                            Apply
-                          </button>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="popup-btn popup-btn-sm"
+                              onClick={(e) => {
+                                console.log(popupInfo.properties);
+                                handleSubmit(e, popupInfo.properties.id);
+                                setPopupInfo(null);
+                              }}
+                            >
+                              Upload
+                            </button>
+                            <button
+                              className="popup-btn popup-btn-sm popup-btn-danger"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteLocation(popupInfo.properties.id);
+                                setPopupInfo(null);
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="popup-btn popup-btn-sm popup-btn-success"
+                              title="Recompute length for every point on this track"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const trk = Number(popupInfo.properties.track);
+                                if (Number.isNaN(trk)) {
+                                  alert('Cal Length: this point has no track number.');
+                                  return;
+                                }
+                                handleCalLength(trk);
+                              }}
+                            >
+                              Cal Length
+                            </button>
+                            <button
+                              className="popup-btn popup-btn-sm popup-btn-primary"
+                              onClick={(e) => { e.stopPropagation(); handleUpdatePopup(popupInfo.properties.id); }}
+                            >
+                              Apply
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </Popup>
