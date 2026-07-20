@@ -1407,16 +1407,17 @@ function App() {
     }
 
     const points = location.filter(
-      l => l.lat != null && l.lng != null
+      l => l.lat != null && l.lng != null && (l.station == null || l.station === '')
     );
     if (points.length === 0) {
-      alert("No Location points with coordinates to process.");
+      alert("No Location points without a station to process.");
       return;
     }
 
+    const alreadyDone = location.length - points.length;
     setShowStationStatus(true);
     setStationStatus([
-      `Assigning nearest station to ${points.length} of ${location.length} Location point(s)...`,
+      `Assigning nearest station to ${points.length} Location point(s)${alreadyDone > 0 ? ` (${alreadyDone} already have a station)` : ''}...`,
     ]);
 
     let updated = 0;
