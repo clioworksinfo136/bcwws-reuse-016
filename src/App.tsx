@@ -2,6 +2,7 @@ import type { ChangeEvent, SyntheticEvent } from "react";
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { flushSync } from "react-dom";
 import type { Schema } from "../amplify/data/resource";
+import outputs from "../amplify_outputs.json";
 import { checkLoginAndGetName } from "./utils/AuthUtils";
 import { useAuthenticator } from '@aws-amplify/ui-react';
 import { generateClient } from "aws-amplify/data";
@@ -271,6 +272,10 @@ function App() {
   const [calResult, setCalResult] = useState<number | null>(null);
   const [computeStatus, setComputeStatus] = useState<string[]>([]);
   const [showComputeLog, setShowComputeLog] = useState(false);
+  // Progress window for long-running batch jobs (e.g. Station assignment).
+  const [stationStatus, setStationStatus] = useState<string[]>([]);
+  const [showStationStatus, setShowStationStatus] = useState(false);
+  const stationLogRef = useRef<HTMLDivElement | null>(null);
   const [showAdminTabs, setShowAdminTabs] = useState<boolean>(false);
 
   //const [clickInfo, setClickInfo] = useState<DataT>();
@@ -515,7 +520,7 @@ function App() {
     setDescription(e.target.value);
   }
 
-  const handleStation = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleStationInput = (e: ChangeEvent<HTMLInputElement>) => {
     setStation(e.target.value);
   }
 
@@ -564,6 +569,11 @@ function App() {
       .catch(err => console.error('Failed to resolve station-line.json URL:', err));
     return () => { cancelled = true; };
   }, []);
+  // Auto-scroll the Station progress log to the latest line.
+  useEffect(() => {
+    const el = stationLogRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [stationStatus]);
 
 
 
@@ -1383,6 +1393,68 @@ function App() {
     }
   }
 
+  // Assign the nearest station ("STA") to every Location record.
+  //
+  // Iterates each Location point, calls the public nearest-station Lambda
+  // (StationIdApi) with the point's lat/lng, takes the returned "STA", and
+  // writes it into the Location's "station" field. Progress is streamed into
+  // the Station progress window so the user can watch it go point by point.
+  async function handleStation() {
+    const apiUrl = (outputs as { custom?: { stationApiUrl?: string } }).custom?.stationApiUrl;
+    if (!apiUrl) {
+      alert("Station API URL is not configured. Run 'npx ampx sandbox' to deploy the backend, then redeploy.");
+      return;
+    }
+
+    const points = location.filter(
+      l => l.lat != null && l.lng != null
+    );
+    if (points.length === 0) {
+      alert("No Location points with coordinates to process.");
+      return;
+    }
+
+    setShowStationStatus(true);
+    setStationStatus([
+      `Assigning nearest station to ${points.length} of ${location.length} Location point(s)...`,
+    ]);
+
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i];
+      const lat = p.lat as number;
+      const lng = p.lng as number;
+      try {
+        const url = `${apiUrl}?lat=${lat}&lng=${lng}&k=1`;
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const body = await resp.json() as { sta?: string; distance_m?: number };
+        const sta = body.sta;
+        if (!sta) {
+          skipped++;
+          flushSync(() => setStationStatus(prev => [...prev,
+            `  • [${i + 1}/${points.length}] id=${p.id}: no STA returned, skipped`]));
+          continue;
+        }
+        await client.models.Location.update({ id: p.id, station: sta });
+        updated++;
+        flushSync(() => setStationStatus(prev => [...prev,
+          `  • [${i + 1}/${points.length}] id=${p.id} → STA ${sta} (${body.distance_m ?? '?'} m)`]));
+      } catch (err) {
+        failed++;
+        flushSync(() => setStationStatus(prev => [...prev,
+          `  • [${i + 1}/${points.length}] id=${p.id}: failed — ${String(err)}`]));
+      }
+    }
+
+    setStationStatus(prev => [...prev,
+      `✓ Station assignment complete — updated: ${updated}, skipped: ${skipped}, failed: ${failed}.`]);
+  }
   async function handleCompute() {
     const LAT_FT = 364000;
     const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
@@ -1750,6 +1822,9 @@ function App() {
         <Button onClick={createLocation} backgroundColor={"azure"} color={"red"}>
           + New
         </Button>
+        <Button onClick={handleStation} backgroundColor={"#6b4f9e"} color={"white"}>
+          Station
+        </Button>
         <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
           Compute
         </Button>
@@ -1795,6 +1870,39 @@ function App() {
             {computeStatus.join('\n')}
           </pre>
         </div>
+      )}
+      {showStationStatus && (
+        <Flex
+          direction="column"
+          style={{
+            margin: "8px 0",
+            padding: "8px",
+            border: "1px solid #6b4f9e",
+            borderRadius: "6px",
+            backgroundColor: "#faf8ff",
+            width: "100%",
+            maxWidth: "900px",
+          }}
+        >
+          <Flex justifyContent="space-between" alignItems="center">
+            <strong style={{ color: "#6b4f9e" }}>Batch Job Progress</strong>
+            <Button size="small" onClick={() => setShowStationStatus(false)}>Close</Button>
+          </Flex>
+          <ScrollView
+            ref={stationLogRef}
+            height="220px"
+            width="100%"
+            style={{ backgroundColor: "#fff", border: "1px solid #ddd", borderRadius: "4px" }}
+          >
+            <pre style={{
+              margin: 0, padding: "8px",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: "12px", lineHeight: "1.4", whiteSpace: "pre-wrap", wordBreak: "break-word",
+            }}>
+              {stationStatus.join("\n")}
+            </pre>
+          </ScrollView>
+        </Flex>
       )}
       <Flex direction="row" alignItems="flex-end" className="toolbar-inputs">
 
@@ -1875,7 +1983,7 @@ function App() {
             type="text"
             value={station}
             placeholder="station"
-            onChange={handleStation}
+            onChange={handleStationInput}
             style={{ width: '120px', height: '42px', boxSizing: 'border-box' }}
           />
         </label>
