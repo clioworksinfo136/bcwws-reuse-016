@@ -1823,7 +1823,14 @@ function App() {
         <Button onClick={createLocation} backgroundColor={"azure"} color={"red"}>
           + New
         </Button>
-        <Button onClick={handleStation} backgroundColor={"#6b4f9e"} color={"white"}>
+        {/* Station button intentionally hidden — delete this style prop to bring
+            it back. All handler and state code is retained. */}
+        <Button
+          onClick={handleStation}
+          backgroundColor={"#6b4f9e"}
+          color={"white"}
+          style={{ display: 'none' }}
+        >
           Station
         </Button>
         <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
