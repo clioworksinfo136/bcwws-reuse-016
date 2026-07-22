@@ -2696,7 +2696,7 @@ function App() {
                                 cursor: (location.lat == null || location.lng == null) ? 'not-allowed' : 'pointer',
                               }}
                             >
-                              📍 Locate
+                              📍
                             </button>
                           </TableCell>
                           <TableCell /* width="15%" */>{location.date}</TableCell>
