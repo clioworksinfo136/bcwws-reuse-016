@@ -11,6 +11,7 @@ import "@aws-amplify/ui-react/styles.css";
 import { uploadData, remove, getUrl } from "aws-amplify/storage";
 
 import type { MapMouseEvent } from "mapbox-gl";
+import type { MapRef } from "react-map-gl";
 
 
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -288,6 +289,14 @@ function App() {
   const [cursor, setCursor] = useState<string>('grab');
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
+
+  // Ref to the map instance so we can flyTo a chosen record. The Amplify Tabs
+  // panel unmounts the map when another tab is active, so a locate request is
+  // stashed in pendingFlyToRef and consumed by the map's onLoad after it remounts.
+  const mapRef = useRef<MapRef | null>(null);
+  const pendingFlyToRef = useRef<{ lng: number; lat: number } | null>(null);
+  // Id of the History Data record the user chose to locate; highlighted on the map.
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [editTrack, setEditTrack] = useState<string>('');
   const [editDescription, setEditDescription] = useState<string>('');
   const [editDiameter, setEditDiameter] = useState<string>('');
@@ -1713,6 +1722,29 @@ function App() {
     return haversineDistanceFt(lat1, lng1, lat2, lng2);
   }, [measurePoints]);
 
+  // Location record currently highlighted from the History Data table (if any).
+  const highlightedLoc = useMemo(
+    () => (highlightedId
+      ? location.find(l => l.id === highlightedId && l.lat != null && l.lng != null) ?? null
+      : null),
+    [highlightedId, location]
+  );
+
+  // Called from a History Data row: switch to the Progress Map tab, then zoom to
+  // and highlight the chosen record. The flyTo runs on map load (see onLoad),
+  // covering the remount that happens when the map tab becomes active.
+  const locateOnMap = useCallback((loc: LocationItem) => {
+    if (loc.lat == null || loc.lng == null) {
+      alert('This record has no coordinates, so it cannot be shown on the map.');
+      return;
+    }
+    setHighlightedId(loc.id);
+    pendingFlyToRef.current = { lng: loc.lng, lat: loc.lat };
+    setTab('1');
+    // If the map happens to already be mounted, fly immediately too.
+    mapRef.current?.flyTo({ center: [loc.lng, loc.lat], zoom: 20, duration: 1500 });
+  }, []);
+
   const measureLineGeoJSON = useMemo(() => ({
     type: 'FeatureCollection' as const,
     features: measurePoints.length === 2
@@ -2024,6 +2056,14 @@ function App() {
             content: (<>
               <Map
                 key="progress-map"
+                ref={mapRef}
+                onLoad={(e) => {
+                  const t = pendingFlyToRef.current;
+                  if (t) {
+                    e.target.flyTo({ center: [t.lng, t.lat], zoom: 20, duration: 1500 });
+                    pendingFlyToRef.current = null;
+                  }
+                }}
                 initialViewState={{
                   longitude: -80.13289123074017,
                   latitude: 26.260443058928075,
@@ -2165,6 +2205,11 @@ function App() {
                 </Source>
 
                 <Marker latitude={Number(lat)} longitude={Number(lng)} />
+                {highlightedLoc && (
+                  <Marker latitude={highlightedLoc.lat!} longitude={highlightedLoc.lng!} anchor="center">
+                    <div className="map-highlight-ring" />
+                  </Marker>
+                )}
                 {hoverInfo && !popupInfo && (
                   <Popup
                     longitude={hoverInfo.longitude}
@@ -2605,6 +2650,7 @@ function App() {
                     }}>
                     <TableHead>
                       <TableRow>
+                        <TableCell as="th">Map</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('date')} style={{ cursor: 'pointer', userSelect: 'none' }}>Date{historySortArrow('date')}</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>Time</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('track')} style={{ cursor: 'pointer', userSelect: 'none' }}>Track{historySortArrow('track')}</TableCell>
@@ -2633,7 +2679,26 @@ function App() {
 
                           }
                           key={location.id}
+                          backgroundColor={location.id === highlightedId ? '#fefcbf' : undefined}
                         >
+                          <TableCell>
+                            <button
+                              onClick={() => locateOnMap(location)}
+                              disabled={location.lat == null || location.lng == null}
+                              title={location.lat == null || location.lng == null
+                                ? 'No coordinates for this record'
+                                : 'Zoom to this point on the Progress Map'}
+                              style={{
+                                fontSize: '11px', padding: '2px 8px', whiteSpace: 'nowrap',
+                                border: '1px solid #1a365d', borderRadius: '4px',
+                                background: location.id === highlightedId ? '#1a365d' : '#ebf4ff',
+                                color: location.id === highlightedId ? '#fff' : '#1a365d',
+                                cursor: (location.lat == null || location.lng == null) ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              📍 Locate
+                            </button>
+                          </TableCell>
                           <TableCell /* width="15%" */>{location.date}</TableCell>
                           <TableCell /* width="15%" */>{location.time}</TableCell>
                           <TableCell /* width="10%" */>{location.track}</TableCell>

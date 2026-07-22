@@ -57,7 +57,10 @@
       "Bash(node -e \"const m=require\\('react-map-gl'\\); console.log\\(['useControl','Marker','Source','Layer'].map\\(k=>k+':'+\\(k in m\\)\\).join\\(' '\\)\\)\")",
       "Bash(node -p \"require\\('react-map-gl/package.json'\\).version\")",
       "Bash(rm -f /tmp/hav.mjs)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(node -e \"const m=require\\('react-map-gl'\\); console.log\\('MapRef' in m, 'useMap' in m\\)\")",
+      "Bash(node -e \"const t=require\\('fs'\\).readFileSync\\('node_modules/react-map-gl/dist/index.d.ts','utf8'\\); console.log\\(t.split\\('\\\\n'\\).filter\\(l=>/MapRef/.test\\(l\\)\\).slice\\(0,3\\).join\\('\\\\n'\\)\\)\")",
+      "Bash(node -p \"require\\('react-map-gl/package.json'\\).types || require\\('react-map-gl/package.json'\\).typings || 'none'\")"
     ]
   }
 }
