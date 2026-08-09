@@ -330,6 +330,15 @@ function App() {
     remark: "", comment: "", equipment: "", eonu: "",
   });
 
+  // Eonu builder: appears when the eonu input of the edited row is focused. Lets
+  // the user compose an "equipment (onsite, role, model)" entry from the row's
+  // equipment list and append it to the eonu field.
+  const [eonuBuilderOpen, setEonuBuilderOpen] = useState(false);
+  const [eonuEquip, setEonuEquip] = useState("");
+  const [eonuOnsite, setEonuOnsite] = useState("onsite");
+  const [eonuRole, setEonuRole] = useState("prime");
+  const [eonuModel, setEonuModel] = useState("");
+
   const [trackInfoList, setTrackInfoList] = useState<TrackInfoItem[]>([]);
 
   const trackGeometryMap = useMemo(() => {
@@ -2894,11 +2903,65 @@ function App() {
                             </TableCell>
                             <TableCell>
                               <input type="text" value={ef.eonu}
+                                onFocus={() => setEonuBuilderOpen(true)}
                                 onChange={e => setEf('eonu', e.target.value)} style={{ width: '100%' }} />
+                              {eonuBuilderOpen ? (
+                                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                                  {/* 1st dropdown: equipment values from the equipment column, split on commas */}
+                                  <select value={eonuEquip} onChange={e => setEonuEquip(e.target.value)}
+                                    style={{ fontSize: '11px', padding: '2px' }}>
+                                    <option value="">Equipment…</option>
+                                    {(ef.equipment ?? '')
+                                      .split(',')
+                                      .map(s => s.trim())
+                                      .filter(Boolean)
+                                      .map((eq, i) => <option key={`${eq}-${i}`} value={eq}>{eq}</option>)}
+                                  </select>
+                                  {/* 2nd dropdown: onsite / not onsite */}
+                                  <select value={eonuOnsite} onChange={e => setEonuOnsite(e.target.value)}
+                                    style={{ fontSize: '11px', padding: '2px' }}>
+                                    <option value="onsite">onsite</option>
+                                    <option value="not onsite">not onsite</option>
+                                  </select>
+                                  {/* 3rd dropdown: prime / sub */}
+                                  <select value={eonuRole} onChange={e => setEonuRole(e.target.value)}
+                                    style={{ fontSize: '11px', padding: '2px' }}>
+                                    <option value="prime">prime</option>
+                                    <option value="sub">sub</option>
+                                  </select>
+                                  {/* model input */}
+                                  <input type="text" value={eonuModel} placeholder="model"
+                                    onChange={e => setEonuModel(e.target.value)}
+                                    style={{ fontSize: '11px', padding: '2px', width: '90px' }} />
+                                  {/* OK: append "equipment (onsite, role, model)" to the eonu field */}
+                                  <button
+                                    onClick={() => {
+                                      if (!eonuEquip) { alert('Select an equipment first.'); return; }
+                                      // Reject adding the same equipment twice: pull the equipment name
+                                      // (text before " (") out of each existing "equip (…)" entry.
+                                      const existingEquip = (ef.eonu || '')
+                                        .split(';')
+                                        .map(s => s.trim())
+                                        .filter(Boolean)
+                                        .map(s => { const i = s.indexOf(' ('); return (i >= 0 ? s.slice(0, i) : s).trim(); });
+                                      if (existingEquip.includes(eonuEquip)) {
+                                        alert(`"${eonuEquip}" has already been added to eonu. Duplicate equipment is not allowed.`);
+                                        return;
+                                      }
+                                      const entry = `${eonuEquip} (${eonuOnsite}, ${eonuRole}, ${eonuModel.trim()})`;
+                                      setEf('eonu', ef.eonu ? `${ef.eonu}; ${entry}` : entry);
+                                      setEonuModel('');
+                                    }}
+                                    style={{ fontSize: '11px', padding: '2px 10px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                  >
+                                    ok
+                                  </button>
+                                </div>
+                              ) : null}
                             </TableCell>
                             <TableCell>
-                              <button onClick={() => saveDateInfo(item.id)} style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Save</button>
-                              <button onClick={() => setEditingDateId(null)} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>
+                              <button onClick={() => { setEonuBuilderOpen(false); saveDateInfo(item.id); }} style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Save</button>
+                              <button onClick={() => { setEonuBuilderOpen(false); setEditingDateId(null); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -2917,6 +2980,7 @@ function App() {
                             <TableCell>
                               <button onClick={() => {
                                 setEditingDateId(item.id);
+                                setEonuBuilderOpen(false);
                                 setEditDateFields({
                                   date: item.date ?? "",
                                   weather: item.weather ?? "",
