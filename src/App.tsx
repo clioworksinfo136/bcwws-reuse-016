@@ -335,7 +335,7 @@ function App() {
   // equipment list and append it to the eonu field.
   const [eonuBuilderOpen, setEonuBuilderOpen] = useState(false);
   const [eonuEquip, setEonuEquip] = useState("");
-  const [eonuOnsite, setEonuOnsite] = useState("onsite");
+  const [eonuUsed, setEonuUsed] = useState("used");
   const [eonuRole, setEonuRole] = useState("prime");
   const [eonuModel, setEonuModel] = useState("");
 
@@ -2917,11 +2917,11 @@ function App() {
                                       .filter(Boolean)
                                       .map((eq, i) => <option key={`${eq}-${i}`} value={eq}>{eq}</option>)}
                                   </select>
-                                  {/* 2nd dropdown: onsite / not onsite */}
-                                  <select value={eonuOnsite} onChange={e => setEonuOnsite(e.target.value)}
+                                  {/* 2nd dropdown: used / not used */}
+                                  <select value={eonuUsed} onChange={e => setEonuUsed(e.target.value)}
                                     style={{ fontSize: '11px', padding: '2px' }}>
-                                    <option value="onsite">onsite</option>
-                                    <option value="not onsite">not onsite</option>
+                                    <option value="used">used</option>
+                                    <option value="not used">not used</option>
                                   </select>
                                   {/* 3rd dropdown: prime / sub */}
                                   <select value={eonuRole} onChange={e => setEonuRole(e.target.value)}
@@ -2937,20 +2937,27 @@ function App() {
                                   <button
                                     onClick={() => {
                                       if (!eonuEquip) { alert('Select an equipment first.'); return; }
-                                      // Reject adding the same equipment twice: pull the equipment name
-                                      // (text before " (") out of each existing "equip (…)" entry.
-                                      const existingEquip = (ef.eonu || '')
-                                        .split(';')
-                                        .map(s => s.trim())
-                                        .filter(Boolean)
-                                        .map(s => { const i = s.indexOf(' ('); return (i >= 0 ? s.slice(0, i) : s).trim(); });
-                                      if (existingEquip.includes(eonuEquip)) {
-                                        alert(`"${eonuEquip}" has already been added to eonu. Duplicate equipment is not allowed.`);
-                                        return;
+                                      // Append the new entry, then dedupe by equipment name (text before " (")
+                                      // keeping only the first occurrence of each. Warn if any duplicates were removed.
+                                      const newEntry = `${eonuEquip} (${eonuUsed}, ${eonuRole}, ${eonuModel.trim()})`;
+                                      const combined = (ef.eonu ? `${ef.eonu}; ${newEntry}` : newEntry);
+                                      const entries = combined.split(';').map(s => s.trim()).filter(Boolean);
+                                      const seen = new Set<string>();
+                                      const dropped: string[] = [];
+                                      const kept: string[] = [];
+                                      for (const e of entries) {
+                                        const idx = e.indexOf(' (');
+                                        const equip = (idx >= 0 ? e.slice(0, idx) : e).trim();
+                                        if (seen.has(equip)) { dropped.push(equip); continue; }
+                                        seen.add(equip);
+                                        kept.push(e);
                                       }
-                                      const entry = `${eonuEquip} (${eonuOnsite}, ${eonuRole}, ${eonuModel.trim()})`;
-                                      setEf('eonu', ef.eonu ? `${ef.eonu}; ${entry}` : entry);
+                                      setEf('eonu', kept.join('; '));
                                       setEonuModel('');
+                                      if (dropped.length > 0) {
+                                        const unique = [...new Set(dropped)];
+                                        alert(`Removed duplicate equipment (only the first occurrence is kept): ${unique.join(', ')}`);
+                                      }
                                     }}
                                     style={{ fontSize: '11px', padding: '2px 10px', backgroundColor: 'red', color: 'white', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
                                   >
