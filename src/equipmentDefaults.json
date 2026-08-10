@@ -1,0 +1,23 @@
+[
+  { "Equipment": "Asphalt / Dump Truck", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Asphalt Paver", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Backhoe", "Prime": "Prime", "Model": "245G LC" },
+  { "Equipment": "Bobcat", "Prime": "Prime", "Model": "285" },
+  { "Equipment": "Broom Tractor", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Combination", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Crane", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Dozer", "Prime": "Prime", "Model": "" },
+  { "Equipment": "END DUMP", "Prime": "Prime", "Model": "HYDREMA 912HM" },
+  { "Equipment": "Excavator", "Prime": "Prime", "Model": "" },
+  { "Equipment": "FRONTLOADER", "Prime": "Prime", "Model": "920" },
+  { "Equipment": "Grader", "Prime": "Prime", "Model": "" },
+  { "Equipment": "HDD Machine", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Loader", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Milling Machine", "Prime": "Prime", "Model": "" },
+  { "Equipment": "MINI BACKHOE", "Prime": "Prime", "Model": "60G" },
+  { "Equipment": "Mini Grader", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Pneumatic Roller", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Sled Tamp", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Trencher", "Prime": "Prime", "Model": "" },
+  { "Equipment": "Vibratory Roller", "Prime": "Prime", "Model": "" }
+]

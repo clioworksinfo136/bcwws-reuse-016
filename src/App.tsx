@@ -71,6 +71,54 @@ import {
 //import type { WaterFeatureProperties } from './types';
 import './FeaturePopup.css';
 import { TRACK_DATA } from './trackData';
+import EQUIPMENT_DEFAULTS from './equipmentDefaults.json';
+
+// Case-insensitive lookup for the equipment defaults JSON.
+const EQUIP_DEFAULTS_BY_NAME: Record<string, typeof EQUIPMENT_DEFAULTS[number]> = Object.fromEntries(
+  EQUIPMENT_DEFAULTS.map(e => [e.Equipment.toLowerCase(), e])
+);
+
+// Fill logic: read the row's Equipment cell (comma-separated), look each name up
+// in equipmentDefaults.json (case-insensitive), turn every match into
+// `Equipment (used, prime, Model)` — same format the OK button produces so the
+// two stay compatible — and append the new entries to the current Equip Details.
+// The combined list is then deduped keeping the first occurrence of each
+// equipment name, matching the OK button's existing dedup rule.
+function buildFillEonu(currentEonu: string, equipmentField: string):
+  { result: string; notFound: string[]; dropped: string[] } {
+  const names = equipmentField.split(',').map(s => s.trim()).filter(Boolean);
+  const newEntries: string[] = [];
+  const notFound: string[] = [];
+  for (const name of names) {
+    const match = EQUIP_DEFAULTS_BY_NAME[name.toLowerCase()];
+    if (!match) { notFound.push(name); continue; }
+    newEntries.push(`${match.Equipment} (used, ${match.Prime.toLowerCase()}, ${match.Model})`);
+  }
+  const combined = [
+    ...currentEonu.split(';').map(s => s.trim()).filter(Boolean),
+    ...newEntries,
+  ];
+  const seen = new Set<string>();
+  const dropped: string[] = [];
+  const kept: string[] = [];
+  for (const entry of combined) {
+    const idx = entry.indexOf(' (');
+    const equip = (idx >= 0 ? entry.slice(0, idx) : entry).trim();
+    if (seen.has(equip)) { dropped.push(equip); continue; }
+    seen.add(equip);
+    kept.push(entry);
+  }
+  return { result: kept.join('; '), notFound, dropped: [...new Set(dropped)] };
+}
+
+// Show any warnings from a Fill run and return the resulting eonu string.
+function reportFillResult(r: { result: string; notFound: string[]; dropped: string[] }): string {
+  const messages: string[] = [];
+  if (r.notFound.length) messages.push(`Not found in equipment defaults, skipped: ${r.notFound.join(', ')}`);
+  if (r.dropped.length) messages.push(`Removed duplicate equipment (only the first occurrence is kept): ${r.dropped.join(', ')}`);
+  if (messages.length) alert(messages.join('\n'));
+  return r.result;
+}
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 const client = generateClient<Schema>();
@@ -2772,6 +2820,7 @@ function App() {
                             <option>Dozer</option>
                           </select>
                           <button onClick={() => setDiEquipment("")} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
+                          <button onClick={() => setDiEonu(reportFillResult(buildFillEonu('', diEquipment)))} title="Clear Equip Details, then look up each equipment in the row's Equipment cell and write its default entry" style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'green', color: 'white', border: 'none', cursor: 'pointer' }}>Fill</button>
                         </TableCell>
                         <TableCell as="th"></TableCell>
                       </TableRow>
@@ -2892,6 +2941,7 @@ function App() {
                                 <option>Dozer</option>
                               </select>
                               <button onClick={() => setEf('equipment', '')} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
+                              <button onClick={() => setEf('eonu', reportFillResult(buildFillEonu('', ef.equipment)))} title="Clear Equip Details, then look up each equipment in the row's Equipment cell and write its default entry" style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'green', color: 'white', border: 'none', cursor: 'pointer' }}>Fill</button>
                             </TableCell>
                             <TableCell>
                               <input type="text" value={ef.eonu}
