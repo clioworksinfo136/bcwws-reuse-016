@@ -117,13 +117,6 @@ type TrackCheckRow = {
   odd: boolean;
 };
 
-function splitCommaList(value?: string | null): string[] {
-  return (value ?? '')
-    .split(',')
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-
 
 
 const theme: Theme = {
@@ -390,7 +383,6 @@ function App() {
 
   const [showTrackTypes, setShowTrackTypes] = useState(false);
 
-  const [dailyReportItem, setDailyReportItem] = useState<DateItem | null>(null);
 
   const [showCheckTrack, setShowCheckTrack] = useState(false);
   const [checkRunning, setCheckRunning] = useState(false);
@@ -3002,8 +2994,7 @@ function App() {
                                   eonu: item.eonu ?? "",
                                 });
                               }} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Modify</button>
-                              <button onClick={() => { if (window.confirm(`Delete record for ${item.date}?`)) client.models.Date.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Delete</button>
-                              <button onClick={() => setDailyReportItem(item)} style={{ backgroundColor: '#1a365d', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Daily Report</button>
+                              <button onClick={() => { if (window.confirm(`Delete record for ${item.date}?`)) client.models.Date.delete({ id: item.id }); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Delete</button>
                             </TableCell>
                           </TableRow>
                         );
@@ -3311,56 +3302,6 @@ function App() {
           </div>
         </div>
       )}
-
-      {dailyReportItem && (() => {
-        const equipmentList = splitCommaList(dailyReportItem.equipment);
-        const eonuSet = new Set(splitCommaList(dailyReportItem.eonu).map(s => s.toLowerCase()));
-        return (
-          <div
-            onClick={() => setDailyReportItem(null)}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <div
-              onClick={e => e.stopPropagation()}
-              style={{ background: '#fff', borderRadius: '8px', padding: '16px', width: '480px', maxHeight: '80vh', overflowY: 'auto', boxShadow: '0 4px 24px rgba(0,0,0,0.35)' }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                <h3 style={{ margin: 0, color: '#1a365d' }}>Daily Report — {dailyReportItem.date}</h3>
-                <button
-                  onClick={() => setDailyReportItem(null)}
-                  style={{ border: 'none', background: 'transparent', fontSize: '18px', cursor: 'pointer', lineHeight: 1 }}
-                  aria-label="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              <h4 style={{ margin: '0 0 8px', color: '#1a365d' }}>Contractor's Equipment</h4>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid #1a365d', textAlign: 'left' }}>
-                    <th style={{ padding: '4px 8px' }}>Description</th>
-                    <th style={{ padding: '4px 8px', width: '90px' }}>No. Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {equipmentList.length === 0 ? (
-                    <tr>
-                      <td style={{ padding: '4px 8px', color: '#666' }} colSpan={2}>No equipment recorded</td>
-                    </tr>
-                  ) : (
-                    equipmentList.map((desc, i) => (
-                      <tr key={`${desc}|${i}`} style={{ borderBottom: '1px solid #e2e8f0', background: i % 2 ? '#f7fafc' : '#fff' }}>
-                        <td style={{ padding: '4px 8px' }}>{desc}</td>
-                        <td style={{ padding: '4px 8px' }}>{eonuSet.has(desc.toLowerCase()) ? 0 : 1}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })()}
 
     </main>
   );
