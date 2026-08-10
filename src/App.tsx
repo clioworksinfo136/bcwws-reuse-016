@@ -2757,7 +2757,7 @@ function App() {
                         <TableCell as="th">Remark</TableCell>
                         <TableCell as="th">Comment</TableCell>
                         <TableCell as="th">Equipment</TableCell>
-                        <TableCell as="th">Eonu</TableCell>
+                        <TableCell as="th">Equip Details</TableCell>
                         <TableCell as="th">
                           <select onChange={e => { if (e.target.value) { setDiEquipment(prev => prev ? prev + ', ' + e.target.value : e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px' }}>
                             <option value="">+List</option>
@@ -2833,7 +2833,7 @@ function App() {
                           <button onClick={createDateInfo} disabled={!date} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Add</button>
                         </TableCell>
                       </TableRow>
-                      {[...dateInfoList].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')).map(item => {
+                      {[...dateInfoList].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')).map(item => {
                         const isEditing = editingDateId === item.id;
                         const ef = editDateFields;
                         const setEf = (field: keyof typeof editDateFields, val: string | number | "") =>
