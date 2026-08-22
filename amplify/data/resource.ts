@@ -68,6 +68,18 @@ const schema = a.schema({
       cost: a.boolean(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
+  // Progress record for a Compute run. The compute Lambda creates one of these,
+  // appends a log line per step, and marks it done/error. The frontend polls it
+  // (ComputeJob.get) to render the same live log the old in-browser Compute showed.
+  ComputeJob: a
+    .model({
+      status: a.string(),        // 'running' | 'done' | 'error'
+      log: a.string().array(),   // progress lines, in order
+      error: a.string(),
+      startedAt: a.string(),
+      finishedAt: a.string(),
+    })
+    .authorization((allow) => [allow.publicApiKey()]),
   Date: a
     .model({
       date: a.date(),

@@ -314,6 +314,9 @@ function App() {
   const [calResult, setCalResult] = useState<number | null>(null);
   const [computeStatus, setComputeStatus] = useState<string[]>([]);
   const [showComputeLog, setShowComputeLog] = useState(false);
+  // True while a server-side compute job is running, so the button can't be
+  // pressed twice and kick off two concurrent jobs writing the same rows.
+  const [computeRunning, setComputeRunning] = useState(false);
   // Progress window for long-running batch jobs (e.g. Station assignment).
   const [stationStatus, setStationStatus] = useState<string[]>([]);
   const [showStationStatus, setShowStationStatus] = useState(false);
@@ -1514,247 +1517,126 @@ function App() {
     setStationStatus(prev => [...prev,
       `✓ Station assignment complete — updated: ${updated}, skipped: ${skipped}, failed: ${failed}.`]);
   }
+  // The compute Lambda writes straight to DynamoDB (that is where the speed
+  // comes from), which bypasses AppSync — so the observeQuery subscriptions
+  // driving trackInfoList/dateInfoList never hear about those writes. Re-list
+  // both tables once the job finishes so the UI shows the new numbers.
+  async function refreshAfterCompute() {
+    const listAll = async <T,>(
+      fetchPage: (nextToken?: string) => Promise<{ data: T[] | null; nextToken?: string | null }>
+    ): Promise<T[]> => {
+      const all: T[] = [];
+      let token: string | undefined = undefined;
+      do {
+        const page = await fetchPage(token);
+        all.push(...(page.data ?? []));
+        token = page.nextToken ?? undefined;
+      } while (token);
+      return all;
+    };
+    try {
+      const [tracks, dates] = await Promise.all([
+        listAll(nextToken => client.models.Track.list({
+          selectionSet: [...trackInfoSelectionSet], limit: 1000, nextToken,
+        })),
+        listAll(nextToken => client.models.Date.list({
+          selectionSet: [...dateSelectionSet], limit: 1000, nextToken,
+        })),
+      ]);
+      setTrackInfoList(tracks as TrackInfoItem[]);
+      dateInfoListRef.current = dates as DateItem[];
+      setDateInfoList(dates as DateItem[]);
+    } catch (err) {
+      console.error('[refreshAfterCompute] failed to refresh:', err);
+    }
+  }
+
+  // Compute runs server-side now (lambda/compute/lambda_function.py). The old
+  // in-browser version issued ~5 sequential AppSync calls per track from the
+  // client at ~150 ms each; the Lambda does the same arithmetic next to the
+  // database and writes back in batches.
+  //
+  // Flow: POST to the compute API, get a jobId straight back, then poll the
+  // ComputeJob row once a second and mirror its log into the same Compute log
+  // panel the previous implementation used.
   async function handleCompute() {
-    const LAT_FT = 364000;
-    const sorted = [...trackInfoList].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
-
-    // Pavement line types whose Track.width is averaged from their Location points' width.
-    const AVG_WIDTH_TYPES = [
-      'Stabilized Subgrade-L',
-      'Limerock Base-L',
-      'Asphalt Pavement Restoration-L',
-      'Mill and Resurface Asphalt Pavement-L',
-    ];
-
-    // Validation: every Location point of these types must have a width filled in.
-    // If any has width 0 or null, warn and stop so the user can fill them first.
-    const missingWidth = location.filter(
-      l => l.type != null && AVG_WIDTH_TYPES.includes(l.type) && (l.width == null || l.width === 0)
-    );
-    if (missingWidth.length > 0) {
-      const lines = missingWidth
-        .map(l => `  - Track ${l.track ?? '?'}, ${l.date ?? ''} ${l.time ?? ''} (${l.type})`)
-        .join('\n');
+    const apiUrl = (outputs as { custom?: { computeApiUrl?: string } }).custom?.computeApiUrl;
+    if (!apiUrl) {
       alert(
-        `Compute stopped: ${missingWidth.length} point(s) of width-based pavement types have no width.\n\n` +
-        `Please go back to the History Data tab and fill in the width for these points before running Compute:\n\n` +
-        lines
+        "Compute API URL is not configured.\n\n" +
+        "Run 'npx ampx sandbox' (or deploy the branch) so amplify_outputs.json " +
+        "picks up custom.computeApiUrl, then reload the app."
       );
       return;
     }
 
-    // Activate the compute log panel so the user can see every pass in real time.
     setShowComputeLog(true);
+    setComputeStatus(['Starting compute...']);
+    setComputeRunning(true);
 
-    // Pass 0: populate unitprice and geometry from trackData.ts by matching Location type → TRACK_DATA.
-    // Drive off the track numbers actually present in Location and upsert the Track row, so newly
-    // added tracks (whose Track record may not be in trackInfoList yet) are also populated.
-    flushSync(() => setComputeStatus(["Pass 0: Populating unit price, total price, geometry, unit from trackData..."]));
-    const { data: existingTracks } = await client.models.Track.list();
-    const trackIdByNumber: Record<number, string> = {};
-    const trackRecByNumber: Record<number, typeof existingTracks[number]> = {};
-    for (const t of existingTracks ?? []) {
-      if (t.track != null) { trackIdByNumber[t.track] = t.id; trackRecByNumber[t.track] = t; }
-    }
-    const locationTrackNumbers = [...new Set(location.map(l => l.track).filter((t): t is number => t != null))]
-      .sort((a, b) => a - b);
-    for (const trackNo of locationTrackNumbers) {
-      const pts = location.filter(l => l.track === trackNo);
-      const firstType = pts.find(p => p.type)?.type;
-      const match = firstType ? TRACK_DATA.find(r => r.type === firstType) : undefined;
-      let trackId = trackIdByNumber[trackNo];
-      const created = !trackId;
-      if (!trackId) {
-        const { data: createdRec } = await client.models.Track.create({ track: trackNo, cost: true });
-        if (!createdRec) {
-          flushSync(() => setComputeStatus(prev => [...prev, `  • Track ${trackNo}: create failed, skipped`]));
-          continue;
-        }
-        trackId = createdRec.id;
-        trackIdByNumber[trackNo] = trackId;
-      }
-      const widthSet = (trackRecByNumber[trackNo]?.width ?? 0) === 0;
-      await client.models.Track.update({
-        id: trackId,
-        trip: true,
-        ...(widthSet && { width: 1 }),
-        ...(match?.id != null && { trackid: match.id }),
-        ...(match?.unitprice != null && { unitprice: match.unitprice }),
-        ...(match?.totalprice != null && { totalprice: match.totalprice }),
-        ...(match?.geometry  != null && { geometry:  match.geometry  }),
-        ...(match?.unit      != null && { unit:      match.unit      }),
-        ...(match?.color     != null && { color:     match.color     }),
-        ...(match?.type      != null && { type:      match.type      }),
-        ...(match?.typeid1   != null && { typeid1:   match.typeid1   }),
-        ...(match?.typeid    != null && { typeid:    match.typeid    }),
-      });
-      const detail = match
-        ? `type "${firstType}" → trackid=${match.id ?? '—'}, geometry=${match.geometry}, unitprice=${match.unitprice ?? '—'}, unit=${match.unit ?? '—'}`
-        : firstType
-          ? `type "${firstType}" (no trackData match — values unchanged)`
-          : `no point type found — values unchanged`;
-      flushSync(() => setComputeStatus(prev => [...prev,
-        `  • Track ${trackNo} (${pts.length} pt${pts.length === 1 ? '' : 's'}, ${created ? 'created' : 'existing'}): ${detail}${widthSet ? ', width set to 1' : ''}`]));
+    let jobId: string;
+    try {
+      const res = await fetch(apiUrl, { method: 'POST' });
+      if (!res.ok) throw new Error(`compute API returned HTTP ${res.status}`);
+      jobId = (await res.json())?.jobId;
+      if (!jobId) throw new Error('compute API did not return a jobId');
+    } catch (err) {
+      console.error('[handleCompute] could not start job:', err);
+      setComputeStatus(prev => [...prev, `ERROR: could not start compute — ${String(err)}`]);
+      setComputeRunning(false);
+      alert('Could not start compute:\n\n' + String(err));
+      return;
     }
 
-    // Pass 0b: for the specific pavement line types, set Track.width to the average
-    // of the width of all Location points sharing that track number.
-    flushSync(() => setComputeStatus(prev => [...prev, "Pass 0: Averaging Location width for pavement line tracks..."]));
-    const { data: tracksForAvg } = await client.models.Track.list();
-    for (const trackRec of tracksForAvg ?? []) {
-      if (trackRec.type == null || !AVG_WIDTH_TYPES.includes(trackRec.type)) continue;
-      const widths = location
-        .filter(l => l.track === trackRec.track && l.width != null)
-        .map(l => l.width as number);
-      if (widths.length === 0) {
-        flushSync(() => setComputeStatus(prev => [...prev, `  • Track ${trackRec.track} ("${trackRec.type}"): no point widths — unchanged`]));
-        continue;
-      }
-      const avgWidth = Math.round((widths.reduce((s, w) => s + w, 0) / widths.length) * 100) / 100;
-      await client.models.Track.update({ id: trackRec.id, width: avgWidth });
-      flushSync(() => setComputeStatus(prev => [...prev, `  • Track ${trackRec.track} ("${trackRec.type}"): avg width = ${avgWidth} (from ${widths.length} pt${widths.length === 1 ? '' : 's'})`]));
-    }
+    // Poll until the job reports done or error. The Lambda's own timeout is
+    // 5 minutes, so give up a little after that rather than polling forever.
+    const startedAt = Date.now();
+    const TIMEOUT_MS = 6 * 60 * 1000;
+    try {
+      for (;;) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-    flushSync(() => setComputeStatus(prev => [...prev, `Pass 0 done — processed ${locationTrackNumbers.length} track(s).`]));
-
-    // Remove Track records whose track number no longer exists in Location
-    flushSync(() => setComputeStatus(prev => [...prev, "Removing Track rows with no matching Location..."]));
-    const usedTracks = new Set(location.map(l => l.track));
-    await Promise.all(
-      sorted
-        .filter(t => t.track == null || !usedTracks.has(t.track))
-        .map(t => client.models.Track.delete({ id: t.id }))
-    );
-
-    // Remove Date records whose date no longer exists in Location
-    flushSync(() => setComputeStatus(prev => [...prev, "Removing Date rows with no matching Location..."]));
-    const usedDates = new Set(location.map(l => l.date));
-    const { data: allDates } = await client.models.Date.list();
-    await Promise.all(
-      (allDates ?? [])
-        .filter(d => d.date == null || !usedDates.has(d.date))
-        .map(d => client.models.Date.delete({ id: d.id }))
-    );
-
-    // Re-fetch fresh track data after Pass 0 so geometry/unitprice updates are reflected
-    const { data: freshTracks } = await client.models.Track.list();
-    const freshSorted = [...(freshTracks ?? [])].sort((a, b) => (a.track ?? 0) - (b.track ?? 0));
-
-    // Pass 1: compute quantity (and ft2/yd2 for polygons) using fresh geometry
-    flushSync(() => setComputeStatus(prev => [...prev, "Pass 1: Computing quantity, area, last date..."]));
-    for (const trackRec of freshSorted) {
-      if (!trackRec.cost) continue;
-      const pts = location.filter(l => l.track === trackRec.track);
-
-      // Find the last date among all locations in this track
-      const lastdate = pts
-        .map(p => p.date ?? '')
-        .filter(d => d !== '')
-        .sort()
-        .at(-1) ?? null;
-      if (lastdate) {
-        await client.models.Track.update({ id: trackRec.id, lastdate });
-      }
-
-      if (trackRec.geometry === 'line') {
-        const sumLength = pts.reduce((s, p) => s + (p.length ?? 0), 0);
-        const w = trackRec.width ?? 1;
-        const isAvgType = trackRec.type != null && AVG_WIDTH_TYPES.includes(trackRec.type);
-        const total = isAvgType
-          ? Math.round(sumLength * w / 9 * 100) / 100
-          : Math.round(sumLength * w * 100) / 100;
-        await client.models.Track.update({ id: trackRec.id, quan: total });
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Track ${trackRec.track} (line): quan = Σlength × width${isAvgType ? ' / 9' : ''} = ${Math.round(sumLength * 100) / 100} × ${w}${isAvgType ? ' / 9' : ''} = ${total}`]));
-
-      } else if (trackRec.geometry === 'point') {
-        const n = pts.length;
-        // #0-6 fitting types (bends, tees, caps) carry a per-item "ton" weight in
-        // trackData; for these, quan = ton (the tonnage, not the point count). All
-        // other point types keep quan = number of location points.
-        const dataRow = trackRec.type ? TRACK_DATA.find(r => r.type === trackRec.type) : undefined;
-        const ton = dataRow?.ton;
-        if (ton != null) {
-          await client.models.Track.update({ id: trackRec.id, quan: ton, numpoint: n });
-          flushSync(() => setComputeStatus(prev => [...prev,
-            `  • Track ${trackRec.track} (point, ${dataRow!.typeid1}): quan = ton = ${ton}`]));
-        } else {
-          await client.models.Track.update({ id: trackRec.id, quan: n, numpoint: n });
-          flushSync(() => setComputeStatus(prev => [...prev,
-            `  • Track ${trackRec.track} (point): quan = point count = ${n}`]));
+        let job: { status?: string | null; log?: (string | null)[] | null; error?: string | null } | null = null;
+        try {
+          const { data } = await client.models.ComputeJob.get({ id: jobId });
+          job = data;
+        } catch (err) {
+          // A transient poll failure should not kill the run; the job keeps
+          // going server-side, so just try again on the next tick.
+          console.error('[handleCompute] poll failed, retrying:', err);
         }
 
-      } else if (trackRec.geometry === 'polygon') {
-        // Sort by date+time so points are in field-collection order (required for Shoelace)
-        const orderedPts = [...pts].sort((a, b) => {
-          const da = `${a.date ?? ''}T${a.time ?? ''}`;
-          const db = `${b.date ?? ''}T${b.time ?? ''}`;
-          return da.localeCompare(db);
-        });
-        const n = orderedPts.length;
-        if (n < 3) {
-          await client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: 0, yd2: 0, quan: 0 });
-          flushSync(() => setComputeStatus(prev => [...prev,
-            `  • Track ${trackRec.track} (polygon): only ${n} pt(s) — need ≥3, quan = 0`]));
-          continue;
+        if (job?.log) {
+          setComputeStatus(job.log.filter((l): l is string => typeof l === 'string'));
         }
-        const midLat = orderedPts.reduce((s, p) => s + (p.lat ?? 0), 0) / n;
-        const LNG_FT = LAT_FT * Math.cos((midLat * Math.PI) / 180);
-        let area = 0;
-        for (let i = 0; i < n; i++) {
-          const j = (i + 1) % n;
-          area += (orderedPts[i].lng ?? 0) * LNG_FT * (orderedPts[j].lat ?? 0) * LAT_FT
-                - (orderedPts[j].lng ?? 0) * LNG_FT * (orderedPts[i].lat ?? 0) * LAT_FT;
+
+        if (job?.status === 'done') {
+          await refreshAfterCompute();
+          setComputeStatus(prev => [...prev, '✓ Compute complete.']);
+          setTab('1');
+          alert('Computation complete.');
+          return;
         }
-        const sqFt = Math.round(Math.abs(area) / 2 * 100) / 100;
-        const sqYd = Math.round(sqFt / 9 * 100) / 100;
-        const unit = trackRec.unit ?? '';
-        const quan = unit === 'SF' ? sqFt : sqYd;
-        await client.models.Track.update({ id: trackRec.id, numpoint: n, ft2: sqFt, yd2: sqYd, quan });
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Track ${trackRec.track} (polygon): area = ${sqFt} SF / ${sqYd} SY (${n} pts), quan = ${quan} (${unit || 'SY'})`]));
-      }
-    }
 
-    // Pass 2: compute value = unitprice * quantity
-    flushSync(() => setComputeStatus(prev => [...prev, "Pass 2: Computing Track value = unit price × quantity..."]));
-    for (const trackRec of freshSorted) {
-      if (!trackRec.cost) continue;
-      const { data: fresh } = await client.models.Track.get({ id: trackRec.id });
-      if (fresh && fresh.unitprice != null && fresh.quan != null) {
-        const value = Math.round(fresh.unitprice * fresh.quan * 100) / 100;
-        await client.models.Track.update({ id: trackRec.id, value });
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Track ${trackRec.track}: value = unit price × quantity = ${fresh.unitprice} × ${fresh.quan} = ${value}`]));
-      } else {
-        const reason = !fresh ? 'record not found' : (fresh.unitprice == null && fresh.quan == null) ? 'no unit price or quantity' : fresh.unitprice == null ? 'no unit price' : 'no quantity';
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Track ${trackRec.track}: skipped (${reason})`]));
-      }
-    }
-    flushSync(() => setComputeStatus(prev => [...prev, "Pass 2 done."]));
+        if (job?.status === 'error') {
+          const message = job.error ?? 'unknown error';
+          setComputeStatus(prev => [...prev, `ERROR: ${message}`]);
+          alert('Compute failed:\n\n' + message);
+          return;
+        }
 
-    // Pass 3: compute Valve value = number * unitprice * ton
-    flushSync(() => setComputeStatus(prev => [...prev, "Pass 3: Computing Valve value = number × unit price × ton..."]));
-    const { data: freshValves } = await client.models.Valve.list();
-    let valveCount = 0;
-    for (const v of freshValves ?? []) {
-      if (v.number != null && v.unitprice != null && v.ton != null) {
-        const value = Math.round(v.number * v.unitprice * v.ton * 100) / 100;
-        await client.models.Valve.update({ id: v.id, value });
-        valveCount++;
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Valve ${v.valve ?? v.id}: value = number × unitprice × ton = ${v.number} × ${v.unitprice} × ${v.ton} = ${value}`]));
-      } else {
-        flushSync(() => setComputeStatus(prev => [...prev,
-          `  • Valve ${v.valve ?? v.id}: skipped (missing number/unitprice/ton)`]));
+        if (Date.now() - startedAt > TIMEOUT_MS) {
+          setComputeStatus(prev => [...prev, 'ERROR: timed out waiting for compute to finish.']);
+          alert(
+            'Timed out waiting for compute to finish.\n\n' +
+            'The job may still be running — check the ComputeLambda logs in CloudWatch.'
+          );
+          return;
+        }
       }
+    } finally {
+      setComputeRunning(false);
     }
-    flushSync(() => setComputeStatus(prev => [...prev, `Pass 3 done — valued ${valveCount} valve(s) of ${(freshValves ?? []).length} total.`]));
-
-    setComputeStatus(prev => [...prev, "✓ Compute complete."]);
-    setTab("1");
-    alert("Computation complete.");
   }
 
   // Toggling the ruler always starts from a clean slate, and closes any open
@@ -1914,8 +1796,8 @@ function App() {
         >
           Station
         </Button>
-        <Button onClick={handleCompute} backgroundColor={"lightgreen"} color={"darkgreen"}>
-          Compute
+        <Button onClick={handleCompute} isDisabled={computeRunning} backgroundColor={"lightgreen"} color={"darkgreen"}>
+          {computeRunning ? "Computing…" : "Compute"}
         </Button>
         <Button onClick={handleCompletePolygon} backgroundColor={"steelblue"} color={"white"}>
           Complete Area
