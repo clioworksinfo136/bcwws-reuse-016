@@ -68,6 +68,16 @@ const schema = a.schema({
       cost: a.boolean(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
+  // A note attached to one photo of a Location. Keyed by the photo's S3 path
+  // (the same string stored in Location.photos) rather than by array position,
+  // so deleting or reordering photos can never shift a note onto the wrong one.
+  PhotoNote: a
+    .model({
+      locationId: a.id().required(),
+      path: a.string().required(),
+      note: a.string(),
+    })
+    .authorization((allow) => [allow.publicApiKey()]),
   // Progress record for a Compute run. The compute Lambda creates one of these,
   // appends a log line per step, and marks it done/error. The frontend polls it
   // (ComputeJob.get) to render the same live log the old in-browser Compute showed.

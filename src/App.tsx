@@ -123,6 +123,20 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
 const client = generateClient<Schema>();
 
+// PhotoNote only exists at runtime once a backend containing that model has
+// been deployed (npx ampx sandbox) and amplify_outputs.json regenerated. Every
+// use is gated on this, so a frontend running ahead of its backend just shows
+// no note boxes instead of crashing on load.
+const PHOTO_NOTES_ENABLED = Boolean(
+  (outputs as { data?: { model_introspection?: { models?: Record<string, unknown> } } })
+    .data?.model_introspection?.models?.PhotoNote
+);
+
+// "originals/<id>/IMG_0412.jpg" -> "IMG_0412.jpg"
+function photoFileName(path: string): string {
+  return path.split('/').pop() || path;
+}
+
 const locationSelectionSet = [
   'id', 'date', 'time', 'track', 'type', 'diameter',
   'width', 'length', 'lat', 'lng', 'username', 'description',
@@ -210,6 +224,9 @@ export type CustomEvent = {
 // "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
 
 
+
+// One saved photo note, indexed in state by the photo's S3 path.
+type PhotoNoteEntry = { id: string; note: string; locationId: string };
 
 interface PopupInfo {
   longitude: number;
@@ -352,6 +369,11 @@ function App() {
   const [editDate, setEditDate] = useState<string>('');
   const [editTime, setEditTime] = useState<string>('');
   const [popupPhotos, setPopupPhotos] = useState<{ path: string; url: string }[]>([]);
+  // Saved photo notes keyed by S3 path, mirrored from the PhotoNote table.
+  const [photoNotes, setPhotoNotes] = useState<Record<string, PhotoNoteEntry>>({});
+  // Unsaved text in the note boxes, keyed by S3 path. A path is only present
+  // while its box holds an edit that has not been saved yet.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [fullPhotoIndex, setFullPhotoIndex] = useState<number | null>(null);
 
   const [dateInfoList, setDateInfoList] = useState<DateItem[]>([]);
@@ -620,6 +642,21 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!PHOTO_NOTES_ENABLED) return;
+    const sub = client.models.PhotoNote.observeQuery().subscribe({
+      next: (data) => {
+        const byPath: Record<string, PhotoNoteEntry> = {};
+        for (const n of data.items) {
+          if (n.path) byPath[n.path] = { id: n.id, note: n.note ?? '', locationId: n.locationId };
+        }
+        setPhotoNotes(byPath);
+      },
+      error: (err) => console.error('PhotoNote observeQuery error:', err),
+    });
+    return () => sub.unsubscribe();
+  }, []);
+
+  useEffect(() => {
     handleUserName();
   }, []);
 
@@ -748,6 +785,7 @@ function App() {
     )
 
 
+    await deletePhotoNoteRecords(photoNoteIdsForLocation(id));
     client.models.Location.delete({ id })
 
     return { response: 200, info: 'success' };
@@ -764,6 +802,7 @@ function App() {
     const result = await deleteLocationPhotos(id)
     console.log("result =", result.response)
     if (result.response == 200) {
+      await deletePhotoNoteRecords(photoNoteIdsForLocation(id));
       client.models.Location.delete({ id })
     } else {
       console.log(" error to delete photos ")
@@ -857,6 +896,101 @@ function App() {
 
   //end Hong's addition
 
+  function clearNoteDraft(path: string) {
+    setNoteDrafts(prev => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
+  }
+
+  // Persist the note box for one photo. Runs when the box loses focus (Enter
+  // blurs it), and does nothing if the text is unchanged. Emptying the box
+  // deletes the note instead of storing a blank one. On failure the draft is
+  // kept, so the user doesn't lose what they typed.
+  async function savePhotoNote(locationId: string, path: string) {
+    if (!PHOTO_NOTES_ENABLED) return;
+    const draft = noteDrafts[path];
+    if (draft === undefined) return;
+    const next = draft.trim();
+    const existing = photoNotes[path];
+    if (next === (existing?.note ?? '')) {
+      clearNoteDraft(path);
+      return;
+    }
+    try {
+      if (existing && !next) {
+        await client.models.PhotoNote.delete({ id: existing.id });
+        setPhotoNotes(prev => {
+          const copy = { ...prev };
+          delete copy[path];
+          return copy;
+        });
+      } else if (existing) {
+        await client.models.PhotoNote.update({ id: existing.id, note: next });
+        setPhotoNotes(prev => ({ ...prev, [path]: { ...existing, note: next } }));
+      } else if (next) {
+        const { data, errors } = await client.models.PhotoNote.create({ locationId, path, note: next });
+        if (!data) throw new Error(errors?.map(e => e.message).join('; ') || 'no record returned');
+        // Record it straight away rather than waiting for the subscription, so
+        // a second save in quick succession updates this row instead of
+        // creating a duplicate.
+        setPhotoNotes(prev => ({ ...prev, [path]: { id: data.id, note: next, locationId } }));
+      }
+      clearNoteDraft(path);
+    } catch (err) {
+      console.error('Failed to save photo note:', err);
+      alert('Saving the photo note failed: ' + String(err));
+    }
+  }
+
+  async function deletePhotoNoteRecords(ids: string[]) {
+    if (!PHOTO_NOTES_ENABLED || ids.length === 0) return;
+    await Promise.all(ids.map(id =>
+      client.models.PhotoNote.delete({ id })
+        .catch(err => console.error('Failed to delete photo note:', err))
+    ));
+  }
+
+  function photoNoteIdsForLocation(locationId: string): string[] {
+    return Object.values(photoNotes).filter(n => n.locationId === locationId).map(n => n.id);
+  }
+
+  // Editable note for one photo, used under each thumbnail and in the viewer.
+  function photoNoteBox(locationId: string, path: string, style?: React.CSSProperties) {
+    if (!PHOTO_NOTES_ENABLED) return null;
+    return (
+      <textarea
+        aria-label={`Note for ${photoFileName(path)}`}
+        value={noteDrafts[path] ?? photoNotes[path]?.note ?? ''}
+        placeholder="Add a note (saves on Enter or click away)"
+        rows={2}
+        onClick={e => e.stopPropagation()}
+        onChange={e => {
+          const value = e.target.value;
+          setNoteDrafts(prev => ({ ...prev, [path]: value }));
+        }}
+        onBlur={() => { void savePhotoNote(locationId, path); }}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            // Enter saves by blurring; Shift+Enter still inserts a newline.
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === 'Escape') {
+            // Escape throws the edit away and restores the saved note.
+            clearNoteDraft(path);
+            e.currentTarget.blur();
+          }
+        }}
+        style={{
+          width: '100%', boxSizing: 'border-box', resize: 'vertical',
+          fontSize: '11px', fontFamily: 'inherit', padding: '2px 4px',
+          ...style,
+        }}
+      />
+    );
+  }
+
   async function deletePopupPhoto(locId: string, path: string) {
     if (!window.confirm('Delete this picture?')) return;
     try {
@@ -868,6 +1002,8 @@ function App() {
       const { data: currentLoc } = await client.models.Location.get({ id: locId });
       const remaining = (currentLoc?.photos ?? []).filter((p): p is string => !!p && p !== path);
       await client.models.Location.update({ id: locId, photos: remaining });
+      const noteId = photoNotes[path]?.id;
+      if (noteId) await deletePhotoNoteRecords([noteId]);
       const { data: fresh } = await client.models.Location.get({ id: locId });
       if (fresh) {
         setLocation(prev => prev.map(loc => loc.id === locId ? fresh : loc));
@@ -2304,18 +2440,31 @@ function App() {
                         {popupPhotos.length > 0 && (
                           <>
                             <label style={{ fontSize: '11px' }}>Photos:</label><br />
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', margin: '4px 0' }}>
                               {popupPhotos.map((photo, i) => (
-                                <img
-                                  key={photo.path}
-                                  src={photo.url}
-                                  alt={`photo ${i + 1}`}
-                                  style={{
-                                    width: '48px', height: '48px', objectFit: 'cover',
-                                    borderRadius: '3px', border: '1px solid #ccc', cursor: 'pointer',
-                                  }}
-                                  onClick={(e) => { e.stopPropagation(); setFullPhotoIndex(i); }}
-                                />
+                                <div key={photo.path} style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                                  <img
+                                    src={photo.url}
+                                    alt={photoNotes[photo.path]?.note || `photo ${i + 1}`}
+                                    style={{
+                                      width: '48px', height: '48px', objectFit: 'cover', flex: 'none',
+                                      borderRadius: '3px', border: '1px solid #ccc', cursor: 'pointer',
+                                    }}
+                                    onClick={(e) => { e.stopPropagation(); setFullPhotoIndex(i); }}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div
+                                      title={photo.path}
+                                      style={{
+                                        fontSize: '10px', color: '#666', marginBottom: '2px',
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                      }}
+                                    >
+                                      {i + 1}. {photoFileName(photo.path)}
+                                    </div>
+                                    {photoNoteBox(popupInfo.properties.id, photo.path)}
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           </>
@@ -2406,7 +2555,7 @@ function App() {
                           src={popupPhotos[fullPhotoIndex].url}
                           alt={`full size ${fullPhotoIndex + 1} of ${popupPhotos.length}`}
                           onClick={(e) => e.stopPropagation()}
-                          style={{ maxWidth: '90vw', maxHeight: '85vh', objectFit: 'contain', borderRadius: '4px', cursor: 'default' }}
+                          style={{ maxWidth: '90vw', maxHeight: '70vh', objectFit: 'contain', borderRadius: '4px', cursor: 'default' }}
                         />
                         {popupPhotos.length > 1 && (
                           <button
@@ -2428,20 +2577,35 @@ function App() {
                         <div
                           style={{
                             position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
-                            display: 'flex', alignItems: 'center', gap: '12px',
+                            width: 'min(90vw, 480px)',
+                            display: 'flex', flexDirection: 'column', gap: '8px',
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600 }}>
-                            {fullPhotoIndex + 1} / {popupPhotos.length}
-                          </span>
-                          <button
-                            className="popup-btn popup-btn-danger"
-                            style={{ flex: 'none' }}
-                            onClick={() => deletePopupPhoto(popupInfo.properties.id, popupPhotos[fullPhotoIndex].path)}
-                          >
-                            Delete picture
-                          </button>
+                          {photoNoteBox(popupInfo.properties.id, popupPhotos[fullPhotoIndex].path, {
+                            fontSize: '13px', padding: '6px 8px', borderRadius: '4px', border: 'none',
+                          })}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{ color: '#fff', fontSize: '13px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                              {fullPhotoIndex + 1} / {popupPhotos.length}
+                            </span>
+                            <span
+                              title={popupPhotos[fullPhotoIndex].path}
+                              style={{
+                                color: '#ddd', fontSize: '12px', flex: 1, minWidth: 0,
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {photoFileName(popupPhotos[fullPhotoIndex].path)}
+                            </span>
+                            <button
+                              className="popup-btn popup-btn-danger"
+                              style={{ flex: 'none' }}
+                              onClick={() => deletePopupPhoto(popupInfo.properties.id, popupPhotos[fullPhotoIndex].path)}
+                            >
+                              Delete picture
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}
