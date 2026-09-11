@@ -225,6 +225,25 @@ export type CustomEvent = {
 
 
 
+// A Location point as the Cal Length buttons need it.
+type LenPoint = {
+  id: string;
+  track?: number | null;
+  date?: string | null;
+  time?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  length?: number | null;
+};
+
+// Length-only update. Raw GraphQL, like handleUpdatePopup, to sidestep the
+// Amplify client-side validation bug triggered by the Comment custom type.
+const UPDATE_LOCATION_LENGTH = /* GraphQL */ `
+  mutation UpdateLocation($input: UpdateLocationInput!) {
+    updateLocation(input: $input) { id length }
+  }
+`;
+
 // One saved photo note, indexed in state by the photo's S3 path.
 type PhotoNoteEntry = { id: string; note: string; locationId: string };
 
@@ -334,6 +353,8 @@ function App() {
   // True while a server-side compute job is running, so the button can't be
   // pressed twice and kick off two concurrent jobs writing the same rows.
   const [computeRunning, setComputeRunning] = useState(false);
+  // Progress text for the toolbar Cal Length button; null when idle.
+  const [calAllStatus, setCalAllStatus] = useState<string | null>(null);
   // Progress window for long-running batch jobs (e.g. Station assignment).
   const [stationStatus, setStationStatus] = useState<string[]>([]);
   const [showStationStatus, setShowStationStatus] = useState(false);
@@ -1085,81 +1106,153 @@ function App() {
     }
   }
 
-  // Recompute the `length` field for every Location point on one track:
-  // sort by date+time ascending, the earliest point gets length 0, and each
-  // later point gets its haversine distance (feet) from the point before it.
+  // Cal Length rule for ONE track, shared by both Cal Length buttons so they can
+  // never disagree: sort by date+time ascending; the earliest point gets 0, and
+  // each later point gets its haversine distance (feet, 2 dp) from the point
+  // before it. A missing coordinate on either end also gives 0. `old` is the
+  // length currently stored, so callers can skip writes that change nothing.
+  function computeTrackLengths(points: LenPoint[]): { id: string; length: number; old: number | null }[] {
+    const ordered = [...points].sort((a, b) =>
+      `${a.date ?? ''}T${a.time ?? ''}`.localeCompare(`${b.date ?? ''}T${b.time ?? ''}`)
+    );
+    const out: { id: string; length: number; old: number | null }[] = [];
+    let prev: LenPoint | null = null;
+    for (const p of ordered) {
+      let length = 0;
+      if (prev != null && p.lat != null && p.lng != null && prev.lat != null && prev.lng != null) {
+        length = Math.round(haversineDistanceFt(prev.lat, prev.lng, p.lat, p.lng) * 100) / 100;
+      }
+      out.push({ id: p.id, length, old: p.length ?? null });
+      prev = p;
+    }
+    return out;
+  }
+
+  async function saveLocationLength(id: string, length: number) {
+    await (client as any).graphql({ query: UPDATE_LOCATION_LENGTH, variables: { input: { id, length } } });
+  }
+
+  // Patch local state so the History Data table and map show new lengths
+  // immediately, without waiting on the observeQuery subscription.
+  // Note: `Map` is the react-map-gl component in this module, so use a plain record.
+  function applyLengthsLocally(lengthById: Record<string, number>) {
+    setLocation(prevLocs => prevLocs.map(loc =>
+      loc.id in lengthById ? { ...loc, length: lengthById[loc.id] } : loc
+    ));
+  }
+
+  // Page through Location, optionally restricted to one track, following
+  // nextToken so nothing past the first page is missed.
+  async function loadLenPoints(track?: number): Promise<LenPoint[]> {
+    const pts: LenPoint[] = [];
+    let token: string | undefined = undefined;
+    do {
+      const page: { data: LenPoint[] | null; nextToken?: string | null } =
+        await client.models.Location.list({
+          ...(track != null && { filter: { track: { eq: track } } }),
+          selectionSet: ['id', 'track', 'date', 'time', 'lat', 'lng', 'length'],
+          limit: 1000,
+          nextToken: token,
+        });
+      pts.push(...(page.data ?? []));
+      token = page.nextToken ?? undefined;
+    } while (token);
+    return pts;
+  }
+
+  // Popup button: recompute one track, writing every point on it.
   async function handleCalLength(track: number) {
     try {
-      // Pull every point on this track, following nextToken so a track with more
-      // than one page of points is still fully covered.
-      type LenPoint = { id: string; date?: string | null; time?: string | null; lat?: number | null; lng?: number | null };
-      const pts: LenPoint[] = [];
-      let token: string | undefined = undefined;
-      do {
-        const page: { data: LenPoint[] | null; nextToken?: string | null } =
-          await client.models.Location.list({
-            filter: { track: { eq: track } },
-            selectionSet: ['id', 'date', 'time', 'lat', 'lng'],
-            limit: 1000,
-            nextToken: token,
-          });
-        pts.push(...(page.data ?? []));
-        token = page.nextToken ?? undefined;
-      } while (token);
-
+      const pts = await loadLenPoints(track);
       if (pts.length === 0) {
         alert(`Cal Length: no points found on track ${track}.`);
         return;
       }
 
-      // Earliest → latest by combined date+time.
-      pts.sort((a, b) =>
-        `${a.date ?? ''}T${a.time ?? ''}`.localeCompare(`${b.date ?? ''}T${b.time ?? ''}`)
-      );
-
-      const mutation = /* GraphQL */ `
-        mutation UpdateLocation($input: UpdateLocationInput!) {
-          updateLocation(input: $input) { id length }
-        }
-      `;
-
-      const updated: { id: string; length: number }[] = [];
-      let prev: { lat?: number | null; lng?: number | null } | null = null;
-      for (const p of pts) {
-        let length: number;
-        if (prev == null) {
-          length = 0;
-        } else if (
-          p.lat != null && p.lng != null &&
-          prev.lat != null && prev.lng != null
-        ) {
-          length = Math.round(haversineDistanceFt(prev.lat, prev.lng, p.lat, p.lng) * 100) / 100;
-        } else {
-          // Missing coordinates on either endpoint — can't measure, store 0.
-          length = 0;
-        }
-        await (client as any).graphql({
-          query: mutation,
-          variables: { input: { id: p.id, length } },
-        });
-        updated.push({ id: p.id, length });
-        prev = p;
-      }
-
-      // Patch local state so the History Data table and map reflect the new
-      // lengths immediately, without waiting on the observeQuery subscription.
-      // Note: `Map` is the react-map-gl component in this module, so use a plain record.
       const lengthById: Record<string, number> = {};
-      for (const u of updated) lengthById[u.id] = u.length;
-      setLocation(prevLocs => prevLocs.map(loc =>
-        loc.id in lengthById ? { ...loc, length: lengthById[loc.id] } : loc
-      ));
+      for (const r of computeTrackLengths(pts)) {
+        await saveLocationLength(r.id, r.length);
+        lengthById[r.id] = r.length;
+      }
+      applyLengthsLocally(lengthById);
 
-      alert(`Cal Length: updated ${updated.length} point(s) on track ${track}.`);
+      alert(`Cal Length: updated ${Object.keys(lengthById).length} point(s) on track ${track}.`);
       setPopupInfo(null);
     } catch (err) {
       console.error('handleCalLength error:', err);
       alert('Cal Length failed: ' + String(err));
+    }
+  }
+
+  // Toolbar button: the same recompute for EVERY track in Location. Points
+  // whose stored length already equals the new value are not rewritten, and
+  // the rest are saved a few at a time rather than one after another, so a
+  // run across all tracks finishes in seconds. One failed save does not stop
+  // the others; failures are reported at the end.
+  async function handleCalLengthAll() {
+    if (!window.confirm(
+      'Recalculate Length for every point on every track?\n\n' +
+      'This overwrites any Length typed in by hand. Run Compute afterwards ' +
+      'to update track quantities and cost.'
+    )) return;
+
+    setCalAllStatus('Loading points…');
+    try {
+      const pts = await loadLenPoints();
+
+      const byTrack: Record<number, LenPoint[]> = {};
+      let noTrack = 0;
+      for (const p of pts) {
+        if (p.track == null) { noTrack++; continue; }
+        (byTrack[p.track] ??= []).push(p);
+      }
+      const trackNos = Object.keys(byTrack).map(Number).sort((a, b) => a - b);
+
+      const changes: { id: string; length: number }[] = [];
+      let unchanged = 0;
+      for (const t of trackNos) {
+        for (const r of computeTrackLengths(byTrack[t])) {
+          if (r.old === r.length) unchanged++;
+          else changes.push({ id: r.id, length: r.length });
+        }
+      }
+
+      const CONCURRENCY = 8;
+      const lengthById: Record<string, number> = {};
+      const failed: string[] = [];
+      let next = 0;
+      let done = 0;
+      setCalAllStatus(`Saving 0/${changes.length}…`);
+      const worker = async () => {
+        while (next < changes.length) {
+          const c = changes[next++];
+          try {
+            await saveLocationLength(c.id, c.length);
+            lengthById[c.id] = c.length;
+          } catch (err) {
+            console.error(`Cal Length: failed to save point ${c.id}:`, err);
+            failed.push(c.id);
+          }
+          done++;
+          setCalAllStatus(`Saving ${done}/${changes.length}…`);
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, changes.length) }, worker));
+      applyLengthsLocally(lengthById);
+
+      const lines = [
+        `Cal Length: ${trackNos.length} track(s), ${pts.length - noTrack} point(s).`,
+        `Updated ${Object.keys(lengthById).length}, already correct ${unchanged}.`,
+      ];
+      if (noTrack) lines.push(`Skipped ${noTrack} point(s) with no track number.`);
+      if (failed.length) lines.push(`${failed.length} point(s) FAILED to save — see the browser console.`);
+      lines.push('', 'Run Compute to update track quantities and cost.');
+      alert(lines.join('\n'));
+    } catch (err) {
+      console.error('handleCalLengthAll error:', err);
+      alert('Cal Length failed: ' + String(err));
+    } finally {
+      setCalAllStatus(null);
     }
   }
 
@@ -1937,6 +2030,15 @@ function App() {
         </Button>
         <Button onClick={handleCompletePolygon} backgroundColor={"steelblue"} color={"white"}>
           Complete Area
+        </Button>
+        <Button
+          onClick={handleCalLengthAll}
+          isDisabled={calAllStatus !== null}
+          title="Recalculate Length for every point on every track"
+          backgroundColor={"#22543d"}
+          color={"white"}
+        >
+          {calAllStatus ?? "Cal Length"}
         </Button>
         {calResult !== null && (
           <span style={{ alignSelf: "center", fontWeight: "bold" }}>
