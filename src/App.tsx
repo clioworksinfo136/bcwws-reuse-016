@@ -2402,7 +2402,7 @@ function App() {
                       <div><b>Date:</b> {hoverInfo.date}</div>
                       <div><b>Type:</b> {hoverInfo.type}</div>
                       <div><b>Length:</b> {hoverInfo.length != null ? hoverInfo.length.toFixed(2) : '—'}</div>
-                      <div><b>Length field:</b> {hoverInfo.lengthfield != null ? hoverInfo.lengthfield.toFixed(2) : '—'}</div>
+                      <div><b>Field Length:</b> {hoverInfo.lengthfield != null ? hoverInfo.lengthfield.toFixed(2) : '—'}</div>
                     </div>
                   </Popup>
                 )}

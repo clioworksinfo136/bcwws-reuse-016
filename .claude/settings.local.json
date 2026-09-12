@@ -106,7 +106,8 @@
       "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_calall.py\")",
       "Bash(git diff *)",
       "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_hover.py\")",
-      "Read(//c/26-01/bcwws-reuse-016/**)"
+      "Read(//c/26-01/bcwws-reuse-016/**)",
+      "Bash(set -e)"
     ]
   }
 }
