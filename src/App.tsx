@@ -139,7 +139,7 @@ function photoFileName(path: string): string {
 
 const locationSelectionSet = [
   'id', 'date', 'time', 'track', 'type', 'diameter',
-  'width', 'length', 'lat', 'lng', 'username', 'description',
+  'width', 'length', 'lengthfield', 'lat', 'lng', 'username', 'description',
   'photos', 'joint', 'station', 'createdAt', 'updatedAt',
 ] as const;
 type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSelectionSet>;
@@ -322,6 +322,7 @@ function App() {
           type:        loc.type ?? '',
           diameter:    loc.diameter ?? null,
           length:      loc.length ?? null,
+          lengthfield: loc.lengthfield ?? null,
           description: loc.description ?? '',
           joint:       loc.joint ?? null,
         },
@@ -367,7 +368,7 @@ function App() {
 
   //const { data } = useGeoJSON();
   const [popupInfo, setPopupInfo] = useState<PopupInfo | null>(null);
-  const [hoverInfo, setHoverInfo] = useState<{ longitude: number; latitude: number; track: string; date: string; type: string } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ longitude: number; latitude: number; track: string; date: string; type: string; length: number | null; lengthfield: number | null } | null>(null);
   const [cursor, setCursor] = useState<string>('grab');
   const [measureMode, setMeasureMode] = useState(false);
   const [measurePoints, setMeasurePoints] = useState<[number, number][]>([]);
@@ -1987,6 +1988,8 @@ function App() {
         track: props.track != null ? String(props.track) : '',
         date: props.date ?? '',
         type: props.type ?? '',
+        length: props.length ?? null,
+        lengthfield: props.lengthfield ?? null,
       });
     } else {
       setHoverInfo(null);
@@ -2392,6 +2395,8 @@ function App() {
                       <div><b>Track:</b> {hoverInfo.track}</div>
                       <div><b>Date:</b> {hoverInfo.date}</div>
                       <div><b>Type:</b> {hoverInfo.type}</div>
+                      <div><b>Length:</b> {hoverInfo.length != null ? hoverInfo.length.toFixed(2) : '—'}</div>
+                      <div><b>Length field:</b> {hoverInfo.lengthfield != null ? hoverInfo.lengthfield.toFixed(2) : '—'}</div>
                     </div>
                   </Popup>
                 )}

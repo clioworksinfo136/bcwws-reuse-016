@@ -6,7 +6,8 @@ export interface WaterFeatureProperties {
   track: string;
   type: string;
   diameter: number;
-  length: number;
+  length: number | null;
+  lengthfield: number | null;
   joint: string | null;
 }
 

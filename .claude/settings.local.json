@@ -104,7 +104,9 @@
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'ampx' } | Select-Object ProcessId, @{n='Started';e={$_.CreationDate}}, @{n='Cmd';e={ if \\($_.CommandLine.Length -gt 110\\) { $_.CommandLine.Substring\\(0,110\\) } else { $_.CommandLine } }} | Format-Table -AutoSize -Wrap)",
       "Bash(node \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\count.mjs\")",
       "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_calall.py\")",
-      "Bash(git diff *)"
+      "Bash(git diff *)",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_hover.py\")",
+      "Read(//c/26-01/bcwws-reuse-016/**)"
     ]
   }
 }
