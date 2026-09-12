@@ -506,11 +506,13 @@ function App() {
   const sortedHistory = useMemo(() => {
     const rows = [...location];
     if (!historySort) {
-      // Default: track ascending, then date+time descending
+      // Default: Track, then Date, then Time - all ascending.
       return rows.sort((a, b) => {
         const trackDiff = (a.track ?? 0) - (b.track ?? 0);
         if (trackDiff !== 0) return trackDiff;
-        return `${b.date ?? ''}T${b.time ?? ''}`.localeCompare(`${a.date ?? ''}T${a.time ?? ''}`);
+        const dateDiff = (a.date ?? '').localeCompare(b.date ?? '');
+        if (dateDiff !== 0) return dateDiff;
+        return (a.time ?? '').localeCompare(b.time ?? '');
       });
     }
     const { key, dir } = historySort;
@@ -2220,7 +2222,11 @@ function App() {
       <Divider orientation="horizontal" />
       <Tabs
         value={tab}
-        onValueChange={(tab) => setTab(tab)}
+        onValueChange={(tab) => {
+          setTab(tab);
+          // Opening History Data resets it to the default Track / Date / Time order.
+          if (tab === '2') setHistorySort(null);
+        }}
         items={[
           ...[{
             label: "Progress Map",
