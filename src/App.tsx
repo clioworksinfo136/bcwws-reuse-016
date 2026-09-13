@@ -385,6 +385,7 @@ function App() {
   const [editDiameter, setEditDiameter] = useState<string>('');
   const [editWidth, setEditWidth] = useState<string>('');
   const [editLength, setEditLength] = useState<string>('');
+  const [editLengthField, setEditLengthField] = useState<string>('');
   const [editType, setEditType] = useState<string>('reuse');
   const [editJoint, setEditJoint] = useState<string>("joint");
   const [editStation, setEditStation] = useState<string>('');
@@ -1062,6 +1063,7 @@ function App() {
           diameter
           width
           length
+          lengthfield
           description
           joint
           station
@@ -1087,6 +1089,8 @@ function App() {
       // length is required in the schema, so a blank box leaves the stored value
       // untouched rather than sending null (which the server would reject).
       if (editLength !== '' && !isNaN(parsedLength)) input.length = parsedLength;
+      const parsedLengthField = parseFloat(editLengthField);
+      input.lengthfield = editLengthField !== '' && !isNaN(parsedLengthField) ? parsedLengthField : null;
 
       console.log('Updating via GraphQL:', input);
       const result = await (client as any).graphql({ query: mutation, variables: { input } });
@@ -1961,6 +1965,7 @@ function App() {
       setEditDiameter(props.diameter != null ? String(props.diameter) : '');
       setEditWidth(match?.width != null ? String(match.width) : '');
       setEditLength(match?.length != null ? String(match.length) : '');
+      setEditLengthField(match?.lengthfield != null ? String(match.lengthfield) : '');
       setEditType(props.type ?? 'reuse');
       setEditJoint(typeof match?.joint === 'string' ? match.joint : 'joint');
       setEditStation(match?.station ?? '');
@@ -2515,6 +2520,19 @@ function App() {
                                   step="any"
                                   value={editLength}
                                   onChange={e => setEditLength(e.target.value)}
+                                  style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
+                                />
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Field Length</td>
+                              <td>
+                                <input
+                                  aria-label="Field Length"
+                                  type="number"
+                                  step="any"
+                                  value={editLengthField}
+                                  onChange={e => setEditLengthField(e.target.value)}
                                   style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
                                 />
                               </td>
