@@ -2512,10 +2512,10 @@ function App() {
                               </td>
                             </tr>
                             <tr>
-                              <td>Length</td>
+                              <td>Length-Calcs</td>
                               <td>
                                 <input
-                                  aria-label="Length"
+                                  aria-label="Length-Calcs"
                                   type="number"
                                   step="any"
                                   value={editLength}
@@ -2525,10 +2525,10 @@ function App() {
                               </td>
                             </tr>
                             <tr>
-                              <td>Field Length</td>
+                              <td>Length-Field</td>
                               <td>
                                 <input
-                                  aria-label="Field Length"
+                                  aria-label="Length-Field"
                                   type="number"
                                   step="any"
                                   value={editLengthField}
