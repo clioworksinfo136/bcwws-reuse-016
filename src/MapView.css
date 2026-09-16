@@ -104,3 +104,36 @@
   70%  { transform: scale(1.35); opacity: 0.35; }
   100% { transform: scale(0.7); opacity: 1; }
 }
+
+/* Report Input table, packed as tightly as its controls allow. Scoped to this
+   table only; the other tables keep Amplify's default spacing. */
+.report-input-table .amplify-table__th,
+.report-input-table .amplify-table__td {
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.25;
+  vertical-align: top;
+}
+
+/* Long header labels wrap instead of widening their column. */
+.report-input-table .amplify-table__th {
+  white-space: normal;
+}
+
+.report-input-table input,
+.report-input-table select {
+  font-size: 12px;
+  padding: 1px 3px;
+  box-sizing: border-box;
+}
+
+/* Small fixed control widths. !important beats the inline width: 100% the
+   inputs carry, which otherwise lets each input stretch its column to ~170px. */
+.report-input-table input[type="text"]   { width: 90px !important; }
+.report-input-table input[type="number"] { width: 52px !important; }
+.report-input-table input[type="date"]   { width: 118px !important; }
+
+.report-input-table button {
+  padding: 2px 6px !important;
+  font-size: 11px;
+}

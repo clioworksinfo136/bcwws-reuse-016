@@ -147,9 +147,60 @@ type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSele
 const dateSelectionSet = [
   'id', 'date', 'weather', 'hight', 'lowt', 'supervisor',
   'labor', 'inspector', 'remark', 'comment', 'equipment', 'eonu',
+  'prime2', 'supervisor2', 'labor2',
+  'subcontractor1', 'supervisors1', 'labors1',
+  'subcontractor2', 'supervisors2', 'labors2',
+  'subcontractor3', 'supervisors3', 'labors3',
   'createdAt', 'updatedAt',
 ] as const;
 type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
+
+// Crew columns added to the Date table: a second prime crew plus up to three
+// subcontractors. Listed once here; the Report Input table's header, add row,
+// edit row, display row and save calls are all generated from this list.
+const DATE_CREW_FIELDS = [
+  { key: 'prime2',         label: 'Prime 2',            numeric: false },
+  { key: 'supervisor2',    label: 'Prime 2 Supervisor', numeric: false },
+  { key: 'labor2',         label: 'Prime 2 Labor',      numeric: true  },
+  { key: 'subcontractor1', label: 'Subcontractor 1',    numeric: false },
+  { key: 'supervisors1',   label: 'Sub 1 Supervisor',   numeric: false },
+  { key: 'labors1',        label: 'Sub 1 Labor',        numeric: true  },
+  { key: 'subcontractor2', label: 'Subcontractor 2',    numeric: false },
+  { key: 'supervisors2',   label: 'Sub 2 Supervisor',   numeric: false },
+  { key: 'labors2',        label: 'Sub 2 Labor',        numeric: true  },
+  { key: 'subcontractor3', label: 'Subcontractor 3',    numeric: false },
+  { key: 'supervisors3',   label: 'Sub 3 Supervisor',   numeric: false },
+  { key: 'labors3',        label: 'Sub 3 Labor',        numeric: true  },
+] as const;
+type DateCrewField = typeof DATE_CREW_FIELDS[number];
+type DateCrewKey = DateCrewField['key'];
+// Form values are kept as text while editing, whatever the field type.
+type CrewValues = Record<DateCrewKey, string>;
+const EMPTY_CREW = Object.fromEntries(DATE_CREW_FIELDS.map(f => [f.key, ''])) as CrewValues;
+
+// Form text -> Date.create/update input. A blank cell becomes null so clearing
+// it and saving really clears it; labor counts are stored as whole numbers.
+function crewToInput(values: CrewValues): Pick<Schema['Date']['type'], DateCrewKey> {
+  const out: Record<string, string | number | null> = {};
+  for (const f of DATE_CREW_FIELDS) {
+    const raw = values[f.key].trim();
+    if (raw === '') out[f.key] = null;
+    else if (f.numeric) {
+      const n = parseInt(raw, 10);
+      out[f.key] = Number.isNaN(n) ? null : n;
+    } else out[f.key] = raw;
+  }
+  return out as unknown as Pick<Schema['Date']['type'], DateCrewKey>;
+}
+
+function crewFromItem(item: DateItem): CrewValues {
+  const out = { ...EMPTY_CREW };
+  for (const f of DATE_CREW_FIELDS) {
+    const v = item[f.key];
+    out[f.key] = v != null ? String(v) : '';
+  }
+  return out;
+}
 
 const trackInfoSelectionSet = [
   'id', 'track', 'geometry', 'width', 'ft2', 'yd2', 'unitprice', 'totalprice',
@@ -411,6 +462,7 @@ function App() {
   const [diComment, setDiComment] = useState("");
   const [diEquipment, setDiEquipment] = useState("");
   const [diEonu, setDiEonu] = useState("");
+  const [diCrew, setDiCrew] = useState<CrewValues>(EMPTY_CREW);
 
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [editDateFields, setEditDateFields] = useState({
@@ -418,6 +470,7 @@ function App() {
     supervisor: "", labor: "" as number | "", inspector: "",
     remark: "", comment: "", equipment: "", eonu: "",
   });
+  const [editCrew, setEditCrew] = useState<CrewValues>(EMPTY_CREW);
 
   // Eonu builder: appears when the eonu input of the edited row is focused. Lets
   // the user compose an "equipment (onsite, role, model)" entry from the row's
@@ -576,6 +629,7 @@ function App() {
       setDiComment("");
       setDiEquipment("");
       setDiEonu("");
+      setDiCrew(EMPTY_CREW);
     }
   };
 
@@ -610,6 +664,7 @@ function App() {
       setDiComment("");
       setDiEquipment("");
       setDiEonu("");
+      setDiCrew(EMPTY_CREW);
     }
   }
 
@@ -1292,6 +1347,7 @@ function App() {
       comment: diComment || undefined,
       equipment: diEquipment || undefined,
       eonu: diEonu || undefined,
+      ...crewToInput(diCrew),
     });
     setDiWeather("");
     setDiHight("");
@@ -1303,6 +1359,21 @@ function App() {
     setDiComment("");
     setDiEquipment("");
     setDiEonu("");
+    setDiCrew(EMPTY_CREW);
+  }
+
+  function crewInputCell(f: DateCrewField, value: string, onChange: (v: string) => void) {
+    return (
+      <TableCell key={f.key}>
+        <input
+          type={f.numeric ? 'number' : 'text'}
+          {...(f.numeric && { min: 0, step: 1 })}
+          value={value}
+          placeholder={f.label.toLowerCase()}
+          onChange={e => onChange(e.target.value)}
+        />
+      </TableCell>
+    );
   }
 
   function saveDateInfo(id: string) {
@@ -1319,6 +1390,7 @@ function App() {
       comment: editDateFields.comment || undefined,
       equipment: editDateFields.equipment || null,
       eonu: editDateFields.eonu || null,
+      ...crewToInput(editCrew),
     });
     setEditingDateId(null);
   }
@@ -2957,11 +3029,12 @@ function App() {
                 color="var(--amplify-colors-blue-60)"
                 padding="1rem"
                 height="75vh"
-                style={{ overflowY: 'auto' }}
+                style={{ overflowX: 'auto', overflowY: 'auto' }}
               >
                 <ThemeProvider theme={theme} colorMode="light">
                   <Table caption="" highlightOnHover={false} variation="striped"
-                    style={{ width: '100%', fontFamily: 'Arial, sans-serif' }}>
+                    className="report-input-table"
+                    style={{ width: 'auto', fontFamily: 'Arial, sans-serif' }}>
                     <TableHead>
                       <TableRow>
                         <TableCell as="th">Date</TableCell>
@@ -2971,6 +3044,9 @@ function App() {
                         <TableCell as="th">Supervisor</TableCell>
                         <TableCell as="th">Labor</TableCell>
                         <TableCell as="th">Inspector</TableCell>
+                        {DATE_CREW_FIELDS.map(f => (
+                          <TableCell as="th" key={f.key}>{f.label}</TableCell>
+                        ))}
                         <TableCell as="th">Remark</TableCell>
                         <TableCell as="th">Comment</TableCell>
                         <TableCell as="th">Equipment</TableCell>
@@ -3031,6 +3107,9 @@ function App() {
                           <input type="text" value={diInspector} placeholder="inspector"
                             onChange={e => setDiInspector(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
+                        {DATE_CREW_FIELDS.map(f =>
+                          crewInputCell(f, diCrew[f.key], v => setDiCrew(prev => ({ ...prev, [f.key]: v })))
+                        )}
                         <TableCell>
                           <input type="text" value={diRemark} placeholder="remark"
                             onChange={e => setDiRemark(e.target.value)} style={{ width: '100%' }} />
@@ -3086,6 +3165,9 @@ function App() {
                               <input type="text" value={ef.inspector}
                                 onChange={e => setEf('inspector', e.target.value)} style={{ width: '100%' }} />
                             </TableCell>
+                            {DATE_CREW_FIELDS.map(f =>
+                              crewInputCell(f, editCrew[f.key], v => setEditCrew(prev => ({ ...prev, [f.key]: v })))
+                            )}
                             <TableCell>
                               <input type="text" value={ef.remark}
                                 onChange={e => setEf('remark', e.target.value)} style={{ width: '100%' }} />
@@ -3199,6 +3281,9 @@ function App() {
                             <TableCell>{item.supervisor}</TableCell>
                             <TableCell>{item.labor}</TableCell>
                             <TableCell>{item.inspector}</TableCell>
+                            {DATE_CREW_FIELDS.map(f => (
+                              <TableCell key={f.key}>{item[f.key] ?? ''}</TableCell>
+                            ))}
                             <TableCell>{item.remark}</TableCell>
                             <TableCell>{item.comment}</TableCell>
                             <TableCell>{item.equipment}</TableCell>
@@ -3207,6 +3292,7 @@ function App() {
                               <button onClick={() => {
                                 setEditingDateId(item.id);
                                 setEonuBuilderOpen(false);
+                                setEditCrew(crewFromItem(item));
                                 setEditDateFields({
                                   date: item.date ?? "",
                                   weather: item.weather ?? "",
