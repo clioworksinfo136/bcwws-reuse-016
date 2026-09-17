@@ -90,6 +90,13 @@ function buildFillEonu(currentEonu: string, equipmentField: string):
   const newEntries: string[] = [];
   const notFound: string[] = [];
   for (const name of names) {
+    const parts = name.split(' - ').map(s => s.trim());
+    if (parts.length >= 2) {
+      // "Name - Prime/Sub - Model", as inserted from the equipment-list dropdown.
+      const prime = parts[1] === '—' ? '' : parts[1].toLowerCase();
+      newEntries.push(`${parts[0]} (used, ${prime}, ${parts.slice(2).join(' - ')})`);
+      continue;
+    }
     const match = EQUIP_DEFAULTS_BY_NAME[name.toLowerCase()];
     if (!match) { notFound.push(name); continue; }
     newEntries.push(`${match.Equipment} (used, ${match.Prime.toLowerCase()}, ${match.Model})`);
@@ -132,6 +139,34 @@ const PHOTO_NOTES_ENABLED = Boolean(
     .data?.model_introspection?.models?.PhotoNote
 );
 
+const EQUIPMENT_LIST_ENABLED = Boolean(
+  (outputs as { data?: { model_introspection?: { models?: Record<string, unknown> } } })
+    .data?.model_introspection?.models?.Equipmentlist
+);
+
+type EquipmentItem = {
+  id: string;
+  primesub?: string | null;
+  equipmentname?: string | null;
+  model?: string | null;
+};
+
+// How an Equipmentlist row is written into a Date's Equipment cell:
+// "Name - Prime/Sub - Model" ("Name - Prime/Sub" when there is no model).
+// The cell is a comma-separated list, so commas inside a part become spaces.
+// buildFillEonu reads this format back.
+function equipmentEntryText(e: EquipmentItem): string {
+  const clean = (s?: string | null) => (s ?? '').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  const name = clean(e.equipmentname);
+  if (!name) return '';
+  const model = clean(e.model);
+  return `${name} - ${clean(e.primesub) || '—'}${model ? ` - ${model}` : ''}`;
+}
+
+// Text in the Equipment List add / edit row while it is being typed.
+type EquipDraft = { primesub: string; equipmentname: string; model: string };
+const EMPTY_EQUIP: EquipDraft = { primesub: 'Prime', equipmentname: '', model: '' };
+
 // "originals/<id>/IMG_0412.jpg" -> "IMG_0412.jpg"
 function photoFileName(path: string): string {
   return path.split('/').pop() || path;
@@ -149,14 +184,13 @@ const dateSelectionSet = [
   'labor', 'inspector', 'remark', 'comment', 'equipment', 'eonu',
   'prime2', 'supervisor2', 'labor2',
   'subcontractor1', 'supervisors1', 'labors1',
-  'subcontractor2', 'supervisors2', 'labors2',
-  'subcontractor3', 'supervisors3', 'labors3',
   'createdAt', 'updatedAt',
 ] as const;
 type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
 
-// Crew columns added to the Date table: a second prime crew plus up to three
-// subcontractors. Listed once here; the Report Input table's header, add row,
+// Crew columns shown for the Date table: a second prime crew plus one
+// subcontractor. (Date also has subcontractor 2 and 3 fields, which are not
+// shown; saving never touches them, so any stored values are kept.) Listed once here; the Report Input table's header, add row,
 // edit row, display row and save calls are all generated from this list.
 const DATE_CREW_FIELDS = [
   { key: 'prime2',         label: 'Prime 2',            numeric: false },
@@ -165,12 +199,6 @@ const DATE_CREW_FIELDS = [
   { key: 'subcontractor1', label: 'Subcontractor 1',    numeric: false },
   { key: 'supervisors1',   label: 'Sub 1 Supervisor',   numeric: false },
   { key: 'labors1',        label: 'Sub 1 Labor',        numeric: true  },
-  { key: 'subcontractor2', label: 'Subcontractor 2',    numeric: false },
-  { key: 'supervisors2',   label: 'Sub 2 Supervisor',   numeric: false },
-  { key: 'labors2',        label: 'Sub 2 Labor',        numeric: true  },
-  { key: 'subcontractor3', label: 'Subcontractor 3',    numeric: false },
-  { key: 'supervisors3',   label: 'Sub 3 Supervisor',   numeric: false },
-  { key: 'labors3',        label: 'Sub 3 Labor',        numeric: true  },
 ] as const;
 type DateCrewField = typeof DATE_CREW_FIELDS[number];
 type DateCrewKey = DateCrewField['key'];
@@ -407,6 +435,103 @@ function App() {
   const [computeRunning, setComputeRunning] = useState(false);
   // Progress text for the toolbar Cal Length button; null when idle.
   const [calAllStatus, setCalAllStatus] = useState<string | null>(null);
+  // Every row of the Equipmentlist table, kept live by observeQuery.
+  const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>([]);
+  const sortedEquipment = useMemo(() =>
+    [...equipmentList].sort((a, b) =>
+      (a.primesub ?? '').localeCompare(b.primesub ?? '', undefined, { sensitivity: 'base' }) ||
+      (a.equipmentname ?? '').localeCompare(b.equipmentname ?? '', undefined, { sensitivity: 'base' })
+    ),
+  [equipmentList]);
+  const [newEquip, setNewEquip] = useState<EquipDraft>(EMPTY_EQUIP);
+  const [editingEquipId, setEditingEquipId] = useState<string | null>(null);
+  const [editEquip, setEditEquip] = useState<EquipDraft>(EMPTY_EQUIP);
+  // True while an add / save / delete is in flight, so buttons can't double-fire.
+  const [equipBusy, setEquipBusy] = useState(false);
+
+  // Trim a draft and check it. An equipment name is required, and a second row
+  // with the same name and prime/sub (ignoring case) is refused. Returns the
+  // database input, or null after telling the user what's wrong.
+  function checkEquipDraft(d: EquipDraft, ignoreId?: string) {
+    const primesub = d.primesub.trim();
+    const equipmentname = d.equipmentname.trim();
+    const model = d.model.trim();
+    if (!equipmentname) {
+      alert('Enter an equipment name.');
+      return null;
+    }
+    const clash = equipmentList.find(e =>
+      e.id !== ignoreId &&
+      (e.equipmentname ?? '').trim().toLowerCase() === equipmentname.toLowerCase() &&
+      (e.primesub ?? '').trim().toLowerCase() === primesub.toLowerCase()
+    );
+    if (clash) {
+      alert(`"${equipmentname}" (${primesub || 'no prime/sub'}) is already in the list.`);
+      return null;
+    }
+    return { primesub: primesub || null, equipmentname, model: model || null };
+  }
+
+  // Run one Equipmentlist write. The list itself refreshes through observeQuery,
+  // so this only has to report failures. Resolves true on success.
+  async function runEquipWrite(
+    action: string,
+    write: () => Promise<{ errors?: { message: string }[] | null }>
+  ): Promise<boolean> {
+    setEquipBusy(true);
+    try {
+      const { errors } = await write();
+      if (errors?.length) throw new Error(errors.map(e => e.message).join('; '));
+      return true;
+    } catch (err) {
+      console.error(`Equipment ${action} failed:`, err);
+      alert(`Could not ${action} the equipment:\n\n${String(err)}`);
+      return false;
+    } finally {
+      setEquipBusy(false);
+    }
+  }
+
+  async function addEquipment() {
+    const input = checkEquipDraft(newEquip);
+    if (!input) return;
+    if (await runEquipWrite('add', () => client.models.Equipmentlist.create(input))) {
+      setNewEquip(EMPTY_EQUIP);
+    }
+  }
+
+  async function saveEquipment(id: string) {
+    const input = checkEquipDraft(editEquip, id);
+    if (!input) return;
+    if (await runEquipWrite('save', () => client.models.Equipmentlist.update({ id, ...input }))) {
+      setEditingEquipId(null);
+    }
+  }
+
+  async function deleteEquipment(e: EquipmentItem) {
+    if (!window.confirm(`Delete "${e.equipmentname ?? ''}" from the equipment list?`)) return;
+    await runEquipWrite('delete', () => client.models.Equipmentlist.delete({ id: e.id }));
+  }
+
+  // Prime / Sub picker. A stored value that is neither (including blank) is
+  // kept as an option, so editing a row can't silently change it.
+  function primeSubSelect(value: string, onChange: (v: string) => void) {
+    const options = ['Prime', 'Sub'];
+    if (!options.includes(value)) options.unshift(value);
+    return (
+      <select value={value} onChange={e => onChange(e.target.value)}>
+        {options.map(o => <option key={o} value={o}>{o || '—'}</option>)}
+      </select>
+    );
+  }
+
+  // Options for the Report Input "+List" dropdowns: one per Equipmentlist row.
+  const equipmentOptions = sortedEquipment.length === 0
+    ? [<option key="none" value="" disabled>(equipment list is empty)</option>]
+    : sortedEquipment.map(e => {
+        const text = equipmentEntryText(e);
+        return text ? <option key={e.id} value={text}>{text}</option> : null;
+      });
   // Progress window for long-running batch jobs (e.g. Station assignment).
   const [stationStatus, setStationStatus] = useState<string[]>([]);
   const [showStationStatus, setShowStationStatus] = useState(false);
@@ -732,6 +857,15 @@ function App() {
         setPhotoNotes(byPath);
       },
       error: (err) => console.error('PhotoNote observeQuery error:', err),
+    });
+    return () => sub.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!EQUIPMENT_LIST_ENABLED) return;
+    const sub = client.models.Equipmentlist.observeQuery().subscribe({
+      next: (data) => setEquipmentList([...data.items]),
+      error: (err) => console.error('Equipmentlist observeQuery error:', err),
     });
     return () => sub.unsubscribe();
   }, []);
@@ -3054,23 +3188,7 @@ function App() {
                         <TableCell as="th">
                           <select onChange={e => { if (e.target.value) { setDiEquipment(prev => prev ? prev + ', ' + e.target.value : e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px' }}>
                             <option value="">+List</option>
-                            <option>Loader</option>
-                            <option>Excavator</option>
-                            <option>Bobcat</option>
-                            <option>Broom Tractor</option>
-                            <option>Combination</option>
-                            <option>Vibratory Roller</option>
-                            <option>Pneumatic Roller</option>
-                            <option>Grader</option>
-                            <option>Mini Grader</option>
-                            <option>Asphalt / Dump Truck</option>
-                            <option>Milling Machine</option>
-                            <option>Asphalt Paver</option>
-                            <option>HDD Machine</option>
-                            <option>Trencher</option>
-                            <option>Crane</option>
-                            <option>Sled Tamp</option>
-                            <option>Dozer</option>
+                            {equipmentOptions}
                           </select>
                           <button onClick={() => setDiEquipment("")} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
                           <button onClick={() => setDiEonu(reportFillResult(buildFillEonu('', diEquipment)))} title="Clear Equip Details, then look up each equipment in the row's Equipment cell and write its default entry" style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'green', color: 'white', border: 'none', cursor: 'pointer' }}>Fill</button>
@@ -3181,23 +3299,7 @@ function App() {
                                 onChange={e => setEf('equipment', e.target.value)} style={{ width: '100%' }} />
                               <select onChange={e => { if (e.target.value) { setEf('equipment', (ef.equipment ? ef.equipment + ', ' : '') + e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px', marginTop: '2px' }}>
                                 <option value="">+List</option>
-                                <option>Loader</option>
-                                <option>Excavator</option>
-                                <option>Bobcat</option>
-                                <option>Broom Tractor</option>
-                                <option>Combination</option>
-                                <option>Vibratory Roller</option>
-                                <option>Pneumatic Roller</option>
-                                <option>Grader</option>
-                                <option>Mini Grader</option>
-                                <option>Asphalt / Dump Truck</option>
-                                <option>Milling Machine</option>
-                                <option>Asphalt Paver</option>
-                                <option>HDD Machine</option>
-                                <option>Trencher</option>
-                                <option>Crane</option>
-                                <option>Sled Tamp</option>
-                                <option>Dozer</option>
+                                {equipmentOptions}
                               </select>
                               <button onClick={() => setEf('equipment', '')} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
                               <button onClick={() => setEf('eonu', reportFillResult(buildFillEonu('', ef.equipment)))} title="Clear Equip Details, then look up each equipment in the row's Equipment cell and write its default entry" style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'green', color: 'white', border: 'none', cursor: 'pointer' }}>Fill</button>
@@ -3216,7 +3318,11 @@ function App() {
                                       .split(',')
                                       .map(s => s.trim())
                                       .filter(Boolean)
-                                      .map((eq, i) => <option key={`${eq}-${i}`} value={eq}>{eq}</option>)}
+                                      .map((eq, i) => (
+                                        // List entries read "Name - Prime/Sub - Model"; the builder
+                                        // supplies its own prime/sub and model, so use just the name.
+                                        <option key={`${eq}-${i}`} value={eq.split(' - ')[0].trim()}>{eq}</option>
+                                      ))}
                                   </select>
                                   {/* 2nd dropdown: used / not used */}
                                   <select value={eonuUsed} onChange={e => setEonuUsed(e.target.value)}
@@ -3315,6 +3421,133 @@ function App() {
                     </TableBody>
                   </Table>
                 </ThemeProvider>
+              </ScrollView>
+            </>)
+          },
+          {
+            label: "Equipment List",
+            value: "5",
+            content: (<>
+              <ScrollView
+                as="div"
+                ariaLabel="Equipment List"
+                backgroundColor="var(--amplify-colors-white)"
+                borderRadius="6px"
+                color="var(--amplify-colors-blue-60)"
+                padding="1rem"
+                height="75vh"
+                style={{ overflowX: 'auto', overflowY: 'auto' }}
+              >
+                {!EQUIPMENT_LIST_ENABLED ? (
+                  <p>
+                    The Equipmentlist table isn't in this app's backend yet. Deploy the
+                    backend (npx ampx sandbox) and reload.
+                  </p>
+                ) : (
+                  <ThemeProvider theme={theme} colorMode="light">
+                    <Table caption="" highlightOnHover={false} variation="striped" size="small"
+                      style={{ width: 'auto', fontFamily: 'Arial, sans-serif' }}>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell as="th">#</TableCell>
+                          <TableCell as="th">Prime / Sub</TableCell>
+                          <TableCell as="th">Equipment ({sortedEquipment.length})</TableCell>
+                          <TableCell as="th">Model</TableCell>
+                          <TableCell as="th"></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {/* New entry */}
+                        <TableRow>
+                          <TableCell></TableCell>
+                          <TableCell>
+                            {primeSubSelect(newEquip.primesub, v => setNewEquip(p => ({ ...p, primesub: v })))}
+                          </TableCell>
+                          <TableCell>
+                            <input type="text" value={newEquip.equipmentname} placeholder="equipment name"
+                              onChange={ev => setNewEquip(p => ({ ...p, equipmentname: ev.target.value }))}
+                              onKeyDown={ev => { if (ev.key === 'Enter') void addEquipment(); }} />
+                          </TableCell>
+                          <TableCell>
+                            <input type="text" value={newEquip.model} placeholder="model"
+                              onChange={ev => setNewEquip(p => ({ ...p, model: ev.target.value }))}
+                              onKeyDown={ev => { if (ev.key === 'Enter') void addEquipment(); }} />
+                          </TableCell>
+                          <TableCell>
+                            <button onClick={() => void addEquipment()} disabled={equipBusy}
+                              style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>
+                              Add
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                        {sortedEquipment.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5}>No entries in the Equipmentlist table yet.</TableCell>
+                          </TableRow>
+                        ) : sortedEquipment.map((e, i) => editingEquipId === e.id ? (
+                          <TableRow key={e.id}>
+                            <TableCell>{i + 1}</TableCell>
+                            <TableCell>
+                              {primeSubSelect(editEquip.primesub, v => setEditEquip(p => ({ ...p, primesub: v })))}
+                            </TableCell>
+                            <TableCell>
+                              <input type="text" value={editEquip.equipmentname}
+                                onChange={ev => setEditEquip(p => ({ ...p, equipmentname: ev.target.value }))}
+                                onKeyDown={ev => {
+                                  if (ev.key === 'Enter') void saveEquipment(e.id);
+                                  if (ev.key === 'Escape') setEditingEquipId(null);
+                                }} />
+                            </TableCell>
+                            <TableCell>
+                              <input type="text" value={editEquip.model}
+                                onChange={ev => setEditEquip(p => ({ ...p, model: ev.target.value }))}
+                                onKeyDown={ev => {
+                                  if (ev.key === 'Enter') void saveEquipment(e.id);
+                                  if (ev.key === 'Escape') setEditingEquipId(null);
+                                }} />
+                            </TableCell>
+                            <TableCell style={{ whiteSpace: 'nowrap' }}>
+                              <button onClick={() => void saveEquipment(e.id)} disabled={equipBusy}
+                                style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>
+                                Save
+                              </button>
+                              <button onClick={() => setEditingEquipId(null)} disabled={equipBusy}
+                                style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>
+                                Cancel
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          <TableRow key={e.id}>
+                            <TableCell>{i + 1}</TableCell>
+                            <TableCell>{e.primesub ?? ''}</TableCell>
+                            <TableCell>{e.equipmentname ?? ''}</TableCell>
+                            <TableCell>{e.model ?? ''}</TableCell>
+                            <TableCell style={{ whiteSpace: 'nowrap' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingEquipId(e.id);
+                                  setEditEquip({
+                                    primesub: e.primesub ?? '',
+                                    equipmentname: e.equipmentname ?? '',
+                                    model: e.model ?? '',
+                                  });
+                                }}
+                                disabled={equipBusy}
+                                style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>
+                                Edit
+                              </button>
+                              <button onClick={() => void deleteEquipment(e)} disabled={equipBusy}
+                                style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>
+                                Delete
+                              </button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </ThemeProvider>
+                )}
               </ScrollView>
             </>)
           },
