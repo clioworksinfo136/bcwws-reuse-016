@@ -313,15 +313,34 @@ type LenPoint = {
   lat?: number | null;
   lng?: number | null;
   length?: number | null;
+  station?: string | null;
+  lengthfield?: number | null;
 };
 
 // Length-only update. Raw GraphQL, like handleUpdatePopup, to sidestep the
 // Amplify client-side validation bug triggered by the Comment custom type.
-const UPDATE_LOCATION_LENGTH = /* GraphQL */ `
+// Every raw updateLocation mutation must select all the fields the app's
+// Location subscription reads. AppSync fills a subscription message only with
+// the fields the triggering mutation asked for, and observeQuery replaces the
+// whole cached record with that message - so a mutation returning just
+// { id length } would blank the point's lat/lng (dropping it from the map)
+// and its other columns until the page is reloaded.
+const LOCATION_MUTATION_FIELDS = locationSelectionSet.join(' ');
+
+const UPDATE_LOCATION_FULL = /* GraphQL */ `
   mutation UpdateLocation($input: UpdateLocationInput!) {
-    updateLocation(input: $input) { id length }
+    updateLocation(input: $input) { ${LOCATION_MUTATION_FIELDS} }
   }
 `;
+
+// Station "16+41" -> 16 * 100 + 41 = 1641 (feet along the alignment).
+// Text after the station is allowed ("26+81 End Point" -> 2681), but the
+// number must be followed by a space or the end ("16+41abc" is rejected).
+// Returns null for a missing or unreadable station.
+function parseStation(s?: string | null): number | null {
+  const m = /^\s*(\d+)\s*\+\s*(\d+(?:\.\d+)?)(?:\s|$)/.exec(s ?? '');
+  return m ? Number(m[1]) * 100 + Number(m[2]) : null;
+}
 
 // One saved photo note, indexed in state by the photo's S3 path.
 type PhotoNoteEntry = { id: string; note: string; locationId: string };
@@ -435,6 +454,8 @@ function App() {
   const [computeRunning, setComputeRunning] = useState(false);
   // Progress text for the toolbar Cal Length button; null when idle.
   const [calAllStatus, setCalAllStatus] = useState<string | null>(null);
+  // Progress text for the toolbar Cal Field Len button; null when idle.
+  const [calFieldStatus, setCalFieldStatus] = useState<string | null>(null);
   // Every row of the Equipmentlist table, kept live by observeQuery.
   const [equipmentList, setEquipmentList] = useState<EquipmentItem[]>([]);
   const sortedEquipment = useMemo(() =>
@@ -1241,24 +1262,7 @@ function App() {
   async function handleUpdatePopup(id: string) {
     // Use raw GraphQL to bypass the Amplify Gen 2 client-side field-validation
     // bug triggered by the `comments: a.ref('Comment').array()` custom type.
-    const mutation = /* GraphQL */ `
-      mutation UpdateLocation($input: UpdateLocationInput!) {
-        updateLocation(input: $input) {
-          id
-          date
-          time
-          track
-          type
-          diameter
-          width
-          length
-          lengthfield
-          description
-          joint
-          station
-        }
-      }
-    `;
+    const mutation = UPDATE_LOCATION_FULL;
     try {
       const input: Record<string, unknown> = { id };
       input.date        = editDate;
@@ -1307,10 +1311,14 @@ function App() {
   // each later point gets its haversine distance (feet, 2 dp) from the point
   // before it. A missing coordinate on either end also gives 0. `old` is the
   // length currently stored, so callers can skip writes that change nothing.
-  function computeTrackLengths(points: LenPoint[]): { id: string; length: number; old: number | null }[] {
-    const ordered = [...points].sort((a, b) =>
+  function sortByDateTime(points: LenPoint[]): LenPoint[] {
+    return [...points].sort((a, b) =>
       `${a.date ?? ''}T${a.time ?? ''}`.localeCompare(`${b.date ?? ''}T${b.time ?? ''}`)
     );
+  }
+
+  function computeTrackLengths(points: LenPoint[]): { id: string; length: number; old: number | null }[] {
+    const ordered = sortByDateTime(points);
     const out: { id: string; length: number; old: number | null }[] = [];
     let prev: LenPoint | null = null;
     for (const p of ordered) {
@@ -1324,8 +1332,14 @@ function App() {
     return out;
   }
 
+  // Raw GraphQL updateLocation (raw to sidestep the Comment custom-type bug,
+  // see UPDATE_LOCATION_FULL).
+  async function updateLocationRaw(input: Record<string, unknown>) {
+    await (client as any).graphql({ query: UPDATE_LOCATION_FULL, variables: { input } });
+  }
+
   async function saveLocationLength(id: string, length: number) {
-    await (client as any).graphql({ query: UPDATE_LOCATION_LENGTH, variables: { input: { id, length } } });
+    await updateLocationRaw({ id, length });
   }
 
   // Patch local state so the History Data table and map show new lengths
@@ -1346,7 +1360,7 @@ function App() {
       const page: { data: LenPoint[] | null; nextToken?: string | null } =
         await client.models.Location.list({
           ...(track != null && { filter: { track: { eq: track } } }),
-          selectionSet: ['id', 'track', 'date', 'time', 'lat', 'lng', 'length'],
+          selectionSet: ['id', 'track', 'date', 'time', 'lat', 'lng', 'length', 'station', 'lengthfield'],
           limit: 1000,
           nextToken: token,
         });
@@ -1377,6 +1391,159 @@ function App() {
     } catch (err) {
       console.error('handleCalLength error:', err);
       alert('Cal Length failed: ' + String(err));
+    }
+  }
+
+  // Cal Field Len rule for ONE line track: sort by date+time; the earliest
+  // point gets 0, and each later point gets |its station value - the previous
+  // point's station value| (2 dp). If either station is missing or unreadable
+  // the point gets 0. badStation marks a point whose OWN station is unreadable;
+  // afterBad marks a point that got 0 only because the one before it was.
+  function computeTrackFieldLengths(points: LenPoint[]): {
+    id: string; lengthfield: number; old: number | null;
+    badStation: boolean; afterBad: boolean; point: LenPoint;
+  }[] {
+    const out: ReturnType<typeof computeTrackFieldLengths> = [];
+    let prevValue: number | null = null;
+    let first = true;
+    for (const p of sortByDateTime(points)) {
+      const value = parseStation(p.station);
+      let lengthfield = 0;
+      let afterBad = false;
+      if (!first) {
+        if (value != null && prevValue != null) {
+          lengthfield = Math.round(Math.abs(value - prevValue) * 100) / 100;
+        } else if (value != null) {
+          afterBad = true;
+        }
+      }
+      out.push({
+        id: p.id, lengthfield, old: p.lengthfield ?? null,
+        badStation: value == null, afterBad, point: p,
+      });
+      prevValue = value;
+      first = false;
+    }
+    return out;
+  }
+
+  // Save a list of items CONCURRENCY at a time. One failure doesn't stop the
+  // rest; the ids that failed are returned. onProgress(done, total) runs after
+  // each item.
+  async function saveInBatches<T extends { id: string }>(
+    items: T[],
+    save: (item: T) => Promise<void>,
+    onProgress: (done: number, total: number) => void,
+    label: string,
+  ): Promise<string[]> {
+    const CONCURRENCY = 8;
+    const failed: string[] = [];
+    let next = 0;
+    let done = 0;
+    onProgress(0, items.length);
+    const worker = async () => {
+      while (next < items.length) {
+        const item = items[next++];
+        try {
+          await save(item);
+        } catch (err) {
+          console.error(`${label}: failed to save point ${item.id}:`, err);
+          failed.push(item.id);
+        }
+        done++;
+        onProgress(done, items.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, worker));
+    return failed;
+  }
+
+  // Track numbers whose Track row says geometry "line" - the same source the
+  // map uses to decide how a track's points are drawn.
+  async function loadLineTrackNumbers(): Promise<Set<number>> {
+    const lines = new Set<number>();
+    let token: string | undefined = undefined;
+    do {
+      const page: { data: { track: number | null; geometry?: string | null }[] | null; nextToken?: string | null } =
+        await client.models.Track.list({ selectionSet: ['track', 'geometry'], limit: 1000, nextToken: token });
+      for (const t of page.data ?? []) {
+        if (t.track != null && t.geometry === 'line') lines.add(t.track);
+      }
+      token = page.nextToken ?? undefined;
+    } while (token);
+    return lines;
+  }
+
+  // Toolbar button: set Length-Field on every point of every line track from
+  // the station numbers. Unchanged values are not rewritten.
+  async function handleCalFieldLengthAll() {
+    if (!window.confirm(
+      'Recalculate Length-Field for every point on every line track?\n\n' +
+      'Each value becomes the station difference from the previous point ' +
+      '(by date and time). This overwrites any Length-Field typed in by hand.'
+    )) return;
+
+    setCalFieldStatus('Loading points…');
+    try {
+      const [pts, lineTracks] = await Promise.all([loadLenPoints(), loadLineTrackNumbers()]);
+
+      const byTrack: Record<number, LenPoint[]> = {};
+      let notLine = 0;
+      for (const p of pts) {
+        if (p.track == null || !lineTracks.has(p.track)) { notLine++; continue; }
+        (byTrack[p.track] ??= []).push(p);
+      }
+      const trackNos = Object.keys(byTrack).map(Number).sort((a, b) => a - b);
+
+      const changes: { id: string; lengthfield: number }[] = [];
+      const badStations: LenPoint[] = [];
+      let afterBad = 0;
+      let unchanged = 0;
+      let considered = 0;
+      for (const t of trackNos) {
+        for (const r of computeTrackFieldLengths(byTrack[t])) {
+          considered++;
+          if (r.badStation) badStations.push(r.point);
+          if (r.afterBad) afterBad++;
+          if (r.old === r.lengthfield) unchanged++;
+          else changes.push({ id: r.id, lengthfield: r.lengthfield });
+        }
+      }
+
+      const saved: Record<string, number> = {};
+      const failed = await saveInBatches(
+        changes,
+        async c => {
+          await updateLocationRaw({ id: c.id, lengthfield: c.lengthfield });
+          saved[c.id] = c.lengthfield;
+        },
+        (done, total) => setCalFieldStatus(`Saving ${done}/${total}…`),
+        'Cal Field Len',
+      );
+      setLocation(prevLocs => prevLocs.map(loc =>
+        loc.id in saved ? { ...loc, lengthfield: saved[loc.id] } : loc
+      ));
+
+      const lines = [
+        `Cal Field Len: ${trackNos.length} line track(s), ${considered} point(s).`,
+        `Updated ${Object.keys(saved).length}, already correct ${unchanged}.`,
+      ];
+      if (notLine) lines.push(`Skipped ${notLine} point(s) not on a line track.`);
+      if (badStations.length) {
+        lines.push('', `${badStations.length} point(s) have a missing or unreadable station, so their Length-Field was set to 0:`);
+        for (const p of badStations.slice(0, 10)) {
+          lines.push(`  - Track ${p.track}, ${p.date ?? ''} ${p.time ?? ''}, station "${p.station ?? ''}"`);
+        }
+        if (badStations.length > 10) lines.push(`  …and ${badStations.length - 10} more.`);
+        if (afterBad) lines.push(`${afterBad} point(s) right after those also got 0, since the previous station couldn't be read.`);
+      }
+      if (failed.length) lines.push('', `${failed.length} point(s) FAILED to save — see the browser console.`);
+      alert(lines.join('\n'));
+    } catch (err) {
+      console.error('handleCalFieldLengthAll error:', err);
+      alert('Cal Field Len failed: ' + String(err));
+    } finally {
+      setCalFieldStatus(null);
     }
   }
 
@@ -1413,27 +1580,16 @@ function App() {
         }
       }
 
-      const CONCURRENCY = 8;
       const lengthById: Record<string, number> = {};
-      const failed: string[] = [];
-      let next = 0;
-      let done = 0;
-      setCalAllStatus(`Saving 0/${changes.length}…`);
-      const worker = async () => {
-        while (next < changes.length) {
-          const c = changes[next++];
-          try {
-            await saveLocationLength(c.id, c.length);
-            lengthById[c.id] = c.length;
-          } catch (err) {
-            console.error(`Cal Length: failed to save point ${c.id}:`, err);
-            failed.push(c.id);
-          }
-          done++;
-          setCalAllStatus(`Saving ${done}/${changes.length}…`);
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(CONCURRENCY, changes.length) }, worker));
+      const failed = await saveInBatches(
+        changes,
+        async c => {
+          await saveLocationLength(c.id, c.length);
+          lengthById[c.id] = c.length;
+        },
+        (done, total) => setCalAllStatus(`Saving ${done}/${total}…`),
+        'Cal Length',
+      );
       applyLengthsLocally(lengthById);
 
       const lines = [
@@ -1896,9 +2052,11 @@ function App() {
     }
   }
 
-  // Assign the nearest station ("STA") to every Location record.
+  // Assign the nearest station ("STA") to every Location point that doesn't
+  // have one yet. Points that already have a station (typed by hand or set by
+  // an earlier run) are left alone.
   //
-  // Iterates each Location point, calls the public nearest-station Lambda
+  // For each such point, calls the public nearest-station Lambda
   // (StationIdApi) with the point's lat/lng, takes the returned "STA", and
   // writes it into the Location's "station" field. Progress is streamed into
   // the Station progress window so the user can watch it go point by point.
@@ -1909,18 +2067,27 @@ function App() {
       return;
     }
 
-    const points = location.filter(
-      l => l.lat != null && l.lng != null && (l.station == null || l.station === '')
-    );
+    // A station of only spaces counts as none.
+    const hasStation = (l: LocationItem) => (l.station ?? '').trim() !== '';
+    const hasCoords = (l: LocationItem) => l.lat != null && l.lng != null;
+    const points = location.filter(l => hasCoords(l) && !hasStation(l));
+    const alreadyDone = location.filter(hasStation).length;
+    const noCoords = location.filter(l => !hasStation(l) && !hasCoords(l)).length;
+
     if (points.length === 0) {
-      alert("No Location points without a station to process.");
+      alert(
+        `No points need a station: ${alreadyDone} already have one` +
+        (noCoords > 0 ? `, and ${noCoords} have no coordinates.` : '.')
+      );
       return;
     }
 
-    const alreadyDone = location.length - points.length;
     setShowStationStatus(true);
     setStationStatus([
-      `Assigning nearest station to ${points.length} Location point(s)${alreadyDone > 0 ? ` (${alreadyDone} already have a station)` : ''}...`,
+      `Assigning nearest station to ${points.length} point(s) without one` +
+      ` (${alreadyDone} already have a station` +
+      (noCoords > 0 ? `, ${noCoords} skipped for missing coordinates` : '') +
+      ')...',
     ]);
 
     let updated = 0;
@@ -2231,13 +2398,10 @@ function App() {
         <Button onClick={createLocation} backgroundColor={"azure"} color={"red"}>
           + New
         </Button>
-        {/* Station button intentionally hidden — delete this style prop to bring
-            it back. All handler and state code is retained. */}
         <Button
           onClick={handleStation}
           backgroundColor={"#6b4f9e"}
           color={"white"}
-          style={{ display: 'none' }}
         >
           Station
         </Button>
@@ -2255,6 +2419,15 @@ function App() {
           color={"white"}
         >
           {calAllStatus ?? "Cal Length"}
+        </Button>
+        <Button
+          onClick={handleCalFieldLengthAll}
+          isDisabled={calFieldStatus !== null}
+          title="Set Length-Field on every line-track point from its station difference"
+          backgroundColor={"#285e61"}
+          color={"white"}
+        >
+          {calFieldStatus ?? "Cal Field Len"}
         </Button>
         {calResult !== null && (
           <span style={{ alignSelf: "center", fontWeight: "bold" }}>
@@ -3090,7 +3263,8 @@ function App() {
                         <TableCell as="th">Width</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('type')} style={{ cursor: 'pointer', userSelect: 'none' }}>Type{historySortArrow('type')}</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>User</TableCell>
-                        <TableCell as="th" /* style={{ width: '15%' }} */>Length</TableCell>
+                        <TableCell as="th" /* style={{ width: '15%' }} */>Length-Cal</TableCell>
+                        <TableCell as="th">Length-Field</TableCell>
                         <TableCell as="th" onClick={() => toggleHistorySort('images')} style={{ cursor: 'pointer', userSelect: 'none' }}>Images{historySortArrow('images')}</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>Latitude</TableCell>
                         <TableCell as="th" /* style={{ width: '15%' }} */>Longitude</TableCell>
@@ -3139,6 +3313,7 @@ function App() {
                           <TableCell /* width="15%" */>{historyTypeLabel(location)}</TableCell>
                           <TableCell /* width="15%" */>{location.username}</TableCell>
                           <TableCell /* width="15%" */>{location.length != null ? Math.round(Number(location.length)) : ''}</TableCell>
+                          <TableCell>{location.lengthfield != null ? Math.round(Number(location.lengthfield)) : ''}</TableCell>
                           <TableCell /* width="15%" */>{location.photos ? location.photos.length : 0}</TableCell>
                           <TableCell /* width="15%" */>{location.lat != null ? Number(location.lat).toFixed(6) : ''}</TableCell>
                           <TableCell /* width="15%" */>{location.lng != null ? Number(location.lng).toFixed(6) : ''}</TableCell>
