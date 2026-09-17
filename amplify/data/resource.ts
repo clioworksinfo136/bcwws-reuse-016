@@ -122,6 +122,13 @@ const schema = a.schema({
       locations: a.hasMany('Location', 'dateId'),
     })
     .authorization((allow) => [allow.publicApiKey()]),
+  Equipmentlist: a
+    .model({
+      primesub: a.string(),
+      equipmentname: a.string(),
+      model: a.string(),
+    })
+    .authorization((allow) => [allow.publicApiKey()]),
 });
 
 export type Schema = ClientSchema<typeof schema>;
