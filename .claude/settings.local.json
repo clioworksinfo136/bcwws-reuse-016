@@ -107,7 +107,21 @@
       "Bash(git diff *)",
       "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_hover.py\")",
       "Read(//c/26-01/bcwws-reuse-016/**)",
-      "Bash(set -e)"
+      "Bash(set -e)",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_crew.py\")",
+      "Bash(awk '{print \"ahead:\",$1,\"behind:\",$2}')",
+      "Bash(node -e \"const o=JSON.parse\\(require\\('fs'\\).readFileSync\\('amplify_outputs.json','utf8'\\)\\); const m=o.data.model_introspection.models; console.log\\('Equipmentlist in outputs:', 'Equipmentlist' in m\\); if \\(m.Equipmentlist\\) console.log\\('fields:', Object.keys\\(m.Equipmentlist.fields\\).join\\(', '\\)\\)\")",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_equip_crud.py\")",
+      "Bash(node \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\clear_equipment.mjs\")",
+      "Bash(node \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\clear_equipment.mjs\" --apply)",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_equip_dropdown.py\")",
+      "Bash(node \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\roundtrip.mjs\")",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_calfield.py\")",
+      "Bash(node \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\dryrun_field.mjs\")",
+      "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_calfield2.py\")",
+      "Bash(python - 'C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\dryrun_field.mjs')",
+      "Bash(node 'C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\dryrun_field.mjs')",
+      "Bash(grep -n \"<TableCell as=\\\\\"th\\\\\" /\\\\* style={{ width: '15%' }} \\\\*/>Length</TableCell>\\\\|location.length != null ? Math.round\" src/App.tsx)"
     ]
   }
 }

@@ -127,6 +127,7 @@ const schema = a.schema({
       primesub: a.string(),
       equipmentname: a.string(),
       model: a.string(),
+      number: a.integer(),
     })
     .authorization((allow) => [allow.publicApiKey()]),
 });
