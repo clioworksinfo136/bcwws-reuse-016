@@ -121,7 +121,9 @@
       "Bash(python \"C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\patch_calfield2.py\")",
       "Bash(python - 'C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\dryrun_field.mjs')",
       "Bash(node 'C:\\\\Users\\\\xin_q\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--26-01-bcwws-reuse-016\\\\c777f515-da59-4518-9bc5-8faa6b28cf75\\\\scratchpad\\\\dryrun_field.mjs')",
-      "Bash(grep -n \"<TableCell as=\\\\\"th\\\\\" /\\\\* style={{ width: '15%' }} \\\\*/>Length</TableCell>\\\\|location.length != null ? Math.round\" src/App.tsx)"
+      "Bash(grep -n \"<TableCell as=\\\\\"th\\\\\" /\\\\* style={{ width: '15%' }} \\\\*/>Length</TableCell>\\\\|location.length != null ? Math.round\" src/App.tsx)",
+      "Bash(sed -n '/Equipmentlist: a/,/authorization/p' amplify/data/resource.ts)",
+      "Bash(node -e \"const o=JSON.parse\\(require\\('fs'\\).readFileSync\\('amplify_outputs.json','utf8'\\)\\);console.log\\(Object.keys\\(o.data.model_introspection.models.Equipmentlist.fields\\).join\\(', '\\)\\)\")"
     ]
   }
 }
