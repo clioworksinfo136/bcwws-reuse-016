@@ -202,10 +202,10 @@ type DateItem = SelectionSet<Schema['Date']['type'], typeof dateSelectionSet>;
 const DATE_CREW_FIELDS = [
   { key: 'prime2',         label: 'Prime 2',            numeric: false },
   { key: 'supervisor2',    label: 'Prime 2 Supervisor', numeric: false },
-  { key: 'labor2',         label: 'Prime 2 Labor',      numeric: true  },
+  { key: 'labor2',         label: 'Prime 2 Labor',      numeric: false },
   { key: 'subcontractor1', label: 'Subcontractor 1',    numeric: false },
   { key: 'supervisors1',   label: 'Sub 1 Supervisor',   numeric: false },
-  { key: 'labors1',        label: 'Sub 1 Labor',        numeric: true  },
+  { key: 'labors1',        label: 'Sub 1 Labor',        numeric: false },
 ] as const;
 type DateCrewField = typeof DATE_CREW_FIELDS[number];
 type DateCrewKey = DateCrewField['key'];
@@ -615,7 +615,7 @@ function App() {
   const [diHight, setDiHight] = useState<number | "">("");
   const [diLowt, setDiLowt] = useState<number | "">("");
   const [diSupervisor, setDiSupervisor] = useState("");
-  const [diLabor, setDiLabor] = useState<number | "">("");
+  const [diLabor, setDiLabor] = useState("");
   const [diInspector, setDiInspector] = useState("");
   const [diRemark, setDiRemark] = useState("");
   const [diComment, setDiComment] = useState("");
@@ -626,7 +626,7 @@ function App() {
   const [editingDateId, setEditingDateId] = useState<string | null>(null);
   const [editDateFields, setEditDateFields] = useState({
     date: "", weather: "", hight: "" as number | "", lowt: "" as number | "",
-    supervisor: "", labor: "" as number | "", inspector: "",
+    supervisor: "", labor: "", inspector: "",
     remark: "", comment: "", equipment: "", eonu: "",
   });
   const [editCrew, setEditCrew] = useState<CrewValues>(EMPTY_CREW);
@@ -1642,7 +1642,7 @@ function App() {
       hight: diHight !== "" ? Number(diHight) : undefined,
       lowt: diLowt !== "" ? Number(diLowt) : undefined,
       supervisor: diSupervisor || undefined,
-      labor: diLabor !== "" ? Number(diLabor) : undefined,
+      labor: diLabor.trim() || undefined,
       inspector: diInspector || undefined,
       remark: diRemark || undefined,
       comment: diComment || undefined,
@@ -1668,7 +1668,7 @@ function App() {
       <TableCell key={f.key}>
         <input
           type={f.numeric ? 'number' : 'text'}
-          {...(f.numeric && { min: 0, step: 1 })}
+          {...(f.numeric ? { min: 0, step: 1 } : {})}
           value={value}
           placeholder={f.label.toLowerCase()}
           onChange={e => onChange(e.target.value)}
@@ -1685,7 +1685,7 @@ function App() {
       hight: editDateFields.hight !== "" ? Number(editDateFields.hight) : undefined,
       lowt: editDateFields.lowt !== "" ? Number(editDateFields.lowt) : undefined,
       supervisor: editDateFields.supervisor || undefined,
-      labor: editDateFields.labor !== "" ? Number(editDateFields.labor) : undefined,
+      labor: editDateFields.labor.trim() || null,
       inspector: editDateFields.inspector || undefined,
       remark: editDateFields.remark || undefined,
       comment: editDateFields.comment || undefined,
@@ -3403,8 +3403,8 @@ function App() {
                             onChange={e => setDiSupervisor(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
-                          <input type="number" value={diLabor} placeholder="labor"
-                            onChange={e => setDiLabor(e.target.value === "" ? "" : Number(e.target.value))} style={{ width: '100%' }} />
+                          <input type="text" value={diLabor} placeholder="labor"
+                            onChange={e => setDiLabor(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
                           <input type="text" value={diInspector} placeholder="inspector"
@@ -3461,8 +3461,8 @@ function App() {
                                 onChange={e => setEf('supervisor', e.target.value)} style={{ width: '100%' }} />
                             </TableCell>
                             <TableCell>
-                              <input type="number" value={ef.labor}
-                                onChange={e => setEf('labor', e.target.value === "" ? "" : Number(e.target.value))} style={{ width: '100%' }} />
+                              <input type="text" value={ef.labor}
+                                onChange={e => setEf('labor', e.target.value)} style={{ width: '100%' }} />
                             </TableCell>
                             <TableCell>
                               <input type="text" value={ef.inspector}
