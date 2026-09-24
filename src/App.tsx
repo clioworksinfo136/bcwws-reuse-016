@@ -471,6 +471,15 @@ function App() {
       (a.equipmentname ?? '').localeCompare(b.equipmentname ?? '', undefined, { sensitivity: 'base' })
     ),
   [equipmentList]);
+  // Equipment name (lower-cased) -> its number from the Equipment List table.
+  const equipmentNumberByName = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of equipmentList) {
+      const name = (e.equipmentname ?? '').trim().toLowerCase();
+      if (name && e.number != null) map[name] = e.number;
+    }
+    return map;
+  }, [equipmentList]);
   const [newEquip, setNewEquip] = useState<EquipDraft>(EMPTY_EQUIP);
   const [editingEquipId, setEditingEquipId] = useState<string | null>(null);
   const [editEquip, setEditEquip] = useState<EquipDraft>(EMPTY_EQUIP);
@@ -3510,7 +3519,13 @@ function App() {
                                         return;
                                       }
                                       const { name, prime, model } = parseEquipmentEntry(entry);
-                                      const newEntry = `${name} (${count}, ${prime.toLowerCase()}, ${model})`;
+                                      // "name (prime, model, count, eonucount)": count is the
+                                      // equipment's number in the Equipment List table (blank when
+                                      // it isn't listed), eonucount is the number box beside the
+                                      // dropdown.
+                                      const listed = equipmentNumberByName[name.toLowerCase()];
+                                      const listCount = listed != null ? String(listed) : '';
+                                      const newEntry = `${name} (${prime.toLowerCase()}, ${model}, ${listCount}, ${count})`;
                                       const { kept, dropped } = dedupeEonu([...splitEonu(ef.eonu), newEntry]);
                                       setEf('eonu', kept.join('; '));
                                       if (dropped.length > 0) {
