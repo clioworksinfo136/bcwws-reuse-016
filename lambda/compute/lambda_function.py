@@ -22,7 +22,8 @@ Passes (identical arithmetic to the original client code)
   validation - every Location of an AVG_WIDTH_TYPE must have a width
   pass 0     - populate unitprice/geometry/unit/etc from track_data.json
   pass 0b    - Track.width = mean of its Locations' width (pavement line types)
-  cleanup    - drop Track/Date rows with no matching Location
+  cleanup    - drop Track rows with no matching Location (Date rows are left
+               alone, so a day's Report Input row survives even with no points)
   pass 1+2   - quantity, area, lastdate AND value in ONE write per track
                (the original did four separate round-trips per track: two
                updates in pass 1, then a get + an update in pass 2; unitprice
@@ -47,7 +48,8 @@ TRACK_DATA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trac
 LOCATION_TABLE = os.environ["LOCATION_TABLE"]
 TRACK_TABLE = os.environ["TRACK_TABLE"]
 VALVE_TABLE = os.environ["VALVE_TABLE"]
-DATE_TABLE = os.environ["DATE_TABLE"]
+# Date rows are no longer touched by Compute; kept for reference only.
+DATE_TABLE = os.environ.get("DATE_TABLE", "")
 JOB_TABLE = os.environ["JOB_TABLE"]
 
 # Set only on the starter copy of this function; it names the worker copy to
@@ -339,12 +341,6 @@ def run_compute(job: Job):
             track_by_number.pop(int(t["track"]), None)
     for orphan_id in orphan_tracks:
         writes.pop(orphan_id, None)
-
-    job.log("Removing Date rows with no matching Location...", flush=True)
-    used_dates = {l.get("date") for l in locations}
-    dates = scan_all(DATE_TABLE)
-    batch_delete(DATE_TABLE, [d["id"] for d in dates
-                             if d.get("date") is None or d["date"] not in used_dates])
 
     # ---- pass 1 + 2: quantity, area, lastdate and value in one write --------
     job.log("Pass 1: Computing quantity, area, last date...", flush=True)
