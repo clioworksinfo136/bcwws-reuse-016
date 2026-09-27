@@ -109,45 +109,12 @@ function equipmentEntryText(e: EquipmentItem): string {
   return `${name} (${clean(e.primesub)}, ${clean(e.model)})`;
 }
 
-// Split an Equipment cell into entries. Commas inside parentheses are kept,
-// so "Bobcat (Prime, 285)" stays in one piece.
-function splitEquipmentCell(value: string): string[] {
-  const out: string[] = [];
-  let depth = 0;
-  let current = '';
-  for (const ch of value) {
-    if (ch === '(') depth++;
-    else if (ch === ')') depth = Math.max(0, depth - 1);
-    if (ch === ',' && depth === 0) { out.push(current); current = ''; continue; }
-    current += ch;
-  }
-  out.push(current);
-  return out.map(s => s.trim()).filter(Boolean);
-}
-
 // The equipment name alone, dropping "(prime, model)" or the older
 // " - prime - model" form.
 function equipmentEntryName(entry: string): string {
   const paren = entry.indexOf(' (');
   if (paren >= 0) return entry.slice(0, paren).trim();
   return entry.split(' - ')[0].trim();
-}
-
-// Pull name / prime / model out of an Equipment cell entry. Handles the
-// current "Name (Prime, Model)" form and the older "Name - Prime - Model".
-// A plain name yields empty prime and model.
-function parseEquipmentEntry(entry: string): { name: string; prime: string; model: string } {
-  const withParen = /^(.*?)\s*\(([^)]*)\)\s*$/.exec(entry);
-  if (withParen) {
-    const [, name, inside] = withParen;
-    const [prime = '', model = ''] = inside.split(',').map(s => s.trim());
-    return { name: name.trim(), prime, model };
-  }
-  const parts = entry.split(' - ').map(s => s.trim());
-  if (parts.length >= 2) {
-    return { name: parts[0], prime: parts[1] === '—' ? '' : parts[1], model: parts.slice(2).join(' - ') };
-  }
-  return { name: entry.trim(), prime: '', model: '' };
 }
 
 // Entries of an Equip Details value.
@@ -471,15 +438,6 @@ function App() {
       (a.equipmentname ?? '').localeCompare(b.equipmentname ?? '', undefined, { sensitivity: 'base' })
     ),
   [equipmentList]);
-  // Equipment name (lower-cased) -> its number from the Equipment List table.
-  const equipmentNumberByName = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const e of equipmentList) {
-      const name = (e.equipmentname ?? '').trim().toLowerCase();
-      if (name && e.number != null) map[name] = e.number;
-    }
-    return map;
-  }, [equipmentList]);
   const [newEquip, setNewEquip] = useState<EquipDraft>(EMPTY_EQUIP);
   const [editingEquipId, setEditingEquipId] = useState<string | null>(null);
   const [editEquip, setEditEquip] = useState<EquipDraft>(EMPTY_EQUIP);
@@ -568,13 +526,6 @@ function App() {
     );
   }
 
-  // Options for the Report Input "+List" dropdowns: one per Equipmentlist row.
-  const equipmentOptions = sortedEquipment.length === 0
-    ? [<option key="none" value="" disabled>(equipment list is empty)</option>]
-    : sortedEquipment.map(e => {
-        const text = equipmentEntryText(e);
-        return text ? <option key={e.id} value={text}>{text}</option> : null;
-      });
   // Progress window for long-running batch jobs (e.g. Station assignment).
   const [stationStatus, setStationStatus] = useState<string[]>([]);
   const [showStationStatus, setShowStationStatus] = useState(false);
@@ -628,7 +579,6 @@ function App() {
   const [diInspector, setDiInspector] = useState("");
   const [diRemark, setDiRemark] = useState("");
   const [diComment, setDiComment] = useState("");
-  const [diEquipment, setDiEquipment] = useState("");
   const [diEonu, setDiEonu] = useState("");
   const [diCrew, setDiCrew] = useState<CrewValues>(EMPTY_CREW);
 
@@ -636,16 +586,18 @@ function App() {
   const [editDateFields, setEditDateFields] = useState({
     date: "", weather: "", hight: "" as number | "", lowt: "" as number | "",
     supervisor: "", labor: "", inspector: "",
-    remark: "", comment: "", equipment: "", eonu: "",
+    remark: "", comment: "", eonu: "",
   });
   const [editCrew, setEditCrew] = useState<CrewValues>(EMPTY_CREW);
 
   // Eonu builder: appears when the eonu input of the edited row is focused. Lets
   // the user compose an "equipment (onsite, role, model)" entry from the row's
   // equipment list and append it to the eonu field.
-  const [eonuBuilderOpen, setEonuBuilderOpen] = useState(false);
   // Count written as the first value of an Equip Details entry: "name (2, prime, model)".
-  const [eonuCount, setEonuCount] = useState("1");
+  // The two numbers of an Equip Details entry:
+  // "name (prime, model, <first box>, <second box>)".
+  const [eonuNum1, setEonuNum1] = useState("1");
+  const [eonuNum2, setEonuNum2] = useState("1");
 
   const [trackInfoList, setTrackInfoList] = useState<TrackInfoItem[]>([]);
 
@@ -793,7 +745,6 @@ function App() {
       setDiInspector("");
       setDiRemark("");
       setDiComment("");
-      setDiEquipment("");
       setDiEonu("");
       setDiCrew(EMPTY_CREW);
     }
@@ -828,7 +779,6 @@ function App() {
       setDiInspector("");
       setDiRemark("");
       setDiComment("");
-      setDiEquipment("");
       setDiEonu("");
       setDiCrew(EMPTY_CREW);
     }
@@ -1655,7 +1605,6 @@ function App() {
       inspector: diInspector || undefined,
       remark: diRemark || undefined,
       comment: diComment || undefined,
-      equipment: diEquipment || undefined,
       eonu: diEonu || undefined,
       ...crewToInput(diCrew),
     });
@@ -1667,7 +1616,6 @@ function App() {
     setDiInspector("");
     setDiRemark("");
     setDiComment("");
-    setDiEquipment("");
     setDiEonu("");
     setDiCrew(EMPTY_CREW);
   }
@@ -1698,7 +1646,6 @@ function App() {
       inspector: editDateFields.inspector || undefined,
       remark: editDateFields.remark || undefined,
       comment: editDateFields.comment || undefined,
-      equipment: editDateFields.equipment || null,
       eonu: editDateFields.eonu || null,
       ...crewToInput(editCrew),
     });
@@ -3378,15 +3325,7 @@ function App() {
                         ))}
                         <TableCell as="th">Remark</TableCell>
                         <TableCell as="th">Comment</TableCell>
-                        <TableCell as="th">Equipment</TableCell>
                         <TableCell as="th">Equip Details</TableCell>
-                        <TableCell as="th">
-                          <select onChange={e => { if (e.target.value) { setDiEquipment(prev => prev ? prev + ', ' + e.target.value : e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px' }}>
-                            <option value="">+List</option>
-                            {equipmentOptions}
-                          </select>
-                          <button onClick={() => setDiEquipment("")} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
-                        </TableCell>
                         <TableCell as="th"></TableCell>
                       </TableRow>
                     </TableHead>
@@ -3429,10 +3368,6 @@ function App() {
                         <TableCell>
                           <input type="text" value={diComment} placeholder="comment"
                             onChange={e => setDiComment(e.target.value)} style={{ width: '100%' }} />
-                        </TableCell>
-                        <TableCell>
-                          <input type="text" value={diEquipment} placeholder="equipment"
-                            onChange={e => setDiEquipment(e.target.value)} style={{ width: '100%' }} />
                         </TableCell>
                         <TableCell>
                           <input type="text" value={diEonu} placeholder="eonu"
@@ -3489,43 +3424,40 @@ function App() {
                                 onChange={e => setEf('comment', e.target.value)} style={{ width: '100%' }} />
                             </TableCell>
                             <TableCell>
-                              <input type="text" value={ef.equipment}
-                                onChange={e => setEf('equipment', e.target.value)} style={{ width: '100%' }} />
-                              <select onChange={e => { if (e.target.value) { setEf('equipment', (ef.equipment ? ef.equipment + ', ' : '') + e.target.value); e.target.value = ''; } }} style={{ fontSize: '11px', padding: '2px', marginTop: '2px' }}>
-                                <option value="">+List</option>
-                                {equipmentOptions}
-                              </select>
-                              <button onClick={() => setEf('equipment', '')} style={{ fontSize: '11px', padding: '2px 6px', marginLeft: '4px', backgroundColor: 'blue', color: 'white', border: 'none', cursor: 'pointer' }}>Clear</button>
-                            </TableCell>
-                            <TableCell>
-                              <input type="text" value={ef.eonu}
-                                onFocus={() => setEonuBuilderOpen(true)}
-                                onChange={e => setEf('eonu', e.target.value)} style={{ width: '100%' }} />
-                              {eonuBuilderOpen ? (
+                              <div style={{ fontSize: '11px', whiteSpace: 'pre-wrap', minHeight: '14px' }}>
+                                {ef.eonu || '—'}
+                              </div>
+                              {(
                                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                                  {/* Picking an equipment adds it straight away, using the
-                                      prime and model carried by that Equipment cell entry. */}
+                                  {/* Picking an equipment adds it straight away, using that
+                                      row's prime, model and number from the Equipment List tab. */}
                                   <select
                                     value=""
                                     style={{ fontSize: '11px', padding: '2px' }}
                                     onChange={ev => {
-                                      const entry = ev.target.value;
+                                      const pickedId = ev.target.value;
                                       ev.target.value = '';
-                                      if (!entry) return;
-                                      const countText = eonuCount.trim();
-                                      const count = countText === '' ? 1 : Number(countText);
-                                      if (!Number.isInteger(count) || count < 0) {
-                                        alert('Enter a whole number (0 or more) before picking an equipment.');
+                                      if (!pickedId) return;
+                                      const picked = equipmentList.find(x => x.id === pickedId);
+                                      if (!picked) return;
+                                      // Blank counts as 1; anything not a whole number is refused.
+                                      const readBox = (text: string) => {
+                                        const t = text.trim();
+                                        const n = t === '' ? 1 : Number(t);
+                                        return Number.isInteger(n) && n >= 0 ? n : null;
+                                      };
+                                      const num1 = readBox(eonuNum1);
+                                      const num2 = readBox(eonuNum2);
+                                      if (num1 == null || num2 == null) {
+                                        alert('Both boxes need a whole number (0 or more) before picking an equipment.');
                                         return;
                                       }
-                                      const { name, prime, model } = parseEquipmentEntry(entry);
-                                      // "name (prime, model, count, eonucount)": count is the
-                                      // equipment's number in the Equipment List table (blank when
-                                      // it isn't listed), eonucount is the number box beside the
-                                      // dropdown.
-                                      const listed = equipmentNumberByName[name.toLowerCase()];
-                                      const listCount = listed != null ? String(listed) : '';
-                                      const newEntry = `${name} (${prime.toLowerCase()}, ${model}, ${listCount}, ${count})`;
+                                      // "name (prime, model, first box, second box)". Name, prime
+                                      // and model come from the Equipment List tab.
+                                      const name = (picked.equipmentname ?? '').trim();
+                                      const prime = (picked.primesub ?? '').trim();
+                                      const model = (picked.model ?? '').trim();
+                                      const newEntry = `${name} (${prime}, ${model}, ${num1}, ${num2})`;
                                       const { kept, dropped } = dedupeEonu([...splitEonu(ef.eonu), newEntry]);
                                       setEf('eonu', kept.join('; '));
                                       if (dropped.length > 0) {
@@ -3533,18 +3465,30 @@ function App() {
                                       }
                                     }}
                                   >
-                                    <option value="">Add equipment…</option>
-                                    {splitEquipmentCell(ef.equipment ?? '')
-                                      .map((eq, i) => <option key={`${eq}-${i}`} value={eq}>{eq}</option>)}
+                                    <option value="">
+                                      {sortedEquipment.length === 0 ? '(equipment list is empty)' : 'Add equipment…'}
+                                    </option>
+                                    {sortedEquipment.map(e => (
+                                      <option key={e.id} value={e.id}>{equipmentEntryText(e)}</option>
+                                    ))}
                                   </select>
-                                  {/* count, applied to the next equipment picked */}
+                                  {/* the two numbers written into the next entry */}
                                   <input
                                     type="number"
                                     step={1}
                                     min={0}
-                                    value={eonuCount}
-                                    title="How many of the next equipment picked"
-                                    onChange={e => setEonuCount(e.target.value)}
+                                    value={eonuNum1}
+                                    title="Third value of the next entry"
+                                    onChange={e => setEonuNum1(e.target.value)}
+                                    style={{ fontSize: '11px', padding: '2px', width: '52px' }}
+                                  />
+                                  <input
+                                    type="number"
+                                    step={1}
+                                    min={0}
+                                    value={eonuNum2}
+                                    title="Fourth value of the next entry"
+                                    onChange={e => setEonuNum2(e.target.value)}
                                     style={{ fontSize: '11px', padding: '2px', width: '52px' }}
                                   />
                                   <button
@@ -3555,11 +3499,11 @@ function App() {
                                     Clear
                                   </button>
                                 </div>
-                              ) : null}
+                              )}
                             </TableCell>
                             <TableCell>
-                              <button onClick={() => { setEonuBuilderOpen(false); saveDateInfo(item.id); }} style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Save</button>
-                              <button onClick={() => { setEonuBuilderOpen(false); setEditingDateId(null); }} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>
+                              <button onClick={() => saveDateInfo(item.id)} style={{ marginRight: 4, backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Save</button>
+                              <button onClick={() => setEditingDateId(null)} style={{ backgroundColor: 'red', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer' }}>Cancel</button>
                             </TableCell>
                           </TableRow>
                         ) : (
@@ -3576,12 +3520,10 @@ function App() {
                             ))}
                             <TableCell>{item.remark}</TableCell>
                             <TableCell>{item.comment}</TableCell>
-                            <TableCell>{item.equipment}</TableCell>
                             <TableCell>{item.eonu}</TableCell>
                             <TableCell>
                               <button onClick={() => {
                                 setEditingDateId(item.id);
-                                setEonuBuilderOpen(false);
                                 setEditCrew(crewFromItem(item));
                                 setEditDateFields({
                                   date: item.date ?? "",
@@ -3593,7 +3535,6 @@ function App() {
                                   inspector: item.inspector ?? "",
                                   remark: item.remark ?? "",
                                   comment: item.comment ?? "",
-                                  equipment: item.equipment ?? "",
                                   eonu: item.eonu ?? "",
                                 });
                               }} style={{ backgroundColor: 'green', color: 'white', border: 'none', padding: '4px 10px', cursor: 'pointer', marginRight: 4 }}>Modify</button>
