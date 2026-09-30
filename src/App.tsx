@@ -1343,30 +1343,6 @@ function App() {
     return pts;
   }
 
-  // Popup button: recompute one track, writing every point on it.
-  async function handleCalLength(track: number) {
-    try {
-      const pts = await loadLenPoints(track);
-      if (pts.length === 0) {
-        alert(`Cal Length: no points found on track ${track}.`);
-        return;
-      }
-
-      const lengthById: Record<string, number> = {};
-      for (const r of computeTrackLengths(pts)) {
-        await saveLocationLength(r.id, r.length);
-        lengthById[r.id] = r.length;
-      }
-      applyLengthsLocally(lengthById);
-
-      alert(`Cal Length: updated ${Object.keys(lengthById).length} point(s) on track ${track}.`);
-      setPopupInfo(null);
-    } catch (err) {
-      console.error('handleCalLength error:', err);
-      alert('Cal Length failed: ' + String(err));
-    }
-  }
-
   // Cal Field Len rule for ONE line track: sort by date+time; the earliest
   // point gets 0, and each later point gets |its station value - the previous
   // point's station value| (2 dp). If either station is missing or unreadable
@@ -2998,21 +2974,6 @@ function App() {
                             </button>
                           </div>
                           <div style={{ display: 'flex', gap: '6px' }}>
-                            <button
-                              className="popup-btn popup-btn-sm popup-btn-success"
-                              title="Recompute length for every point on this track"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const trk = Number(popupInfo.properties.track);
-                                if (Number.isNaN(trk)) {
-                                  alert('Cal Length: this point has no track number.');
-                                  return;
-                                }
-                                handleCalLength(trk);
-                              }}
-                            >
-                              Cal Length
-                            </button>
                             <button
                               className="popup-btn popup-btn-sm popup-btn-primary"
                               onClick={(e) => { e.stopPropagation(); handleUpdatePopup(popupInfo.properties.id); }}
