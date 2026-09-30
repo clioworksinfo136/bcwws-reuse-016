@@ -148,7 +148,7 @@ function photoFileName(path: string): string {
 
 const locationSelectionSet = [
   'id', 'date', 'time', 'track', 'type', 'diameter',
-  'width', 'length', 'lengthfield', 'lat', 'lng', 'username', 'description',
+  'width', 'length', 'lengthfield', 'lengthoverwrite', 'lat', 'lng', 'username', 'description',
   'photos', 'joint', 'station', 'createdAt', 'updatedAt',
 ] as const;
 type LocationItem = SelectionSet<Schema['Location']['type'], typeof locationSelectionSet>;
@@ -289,6 +289,7 @@ type LenPoint = {
   length?: number | null;
   station?: string | null;
   lengthfield?: number | null;
+  lengthoverwrite?: boolean | null;
 };
 
 // Length-only update. Raw GraphQL, like handleUpdatePopup, to sidestep the
@@ -556,6 +557,7 @@ function App() {
   const [editWidth, setEditWidth] = useState<string>('');
   const [editLength, setEditLength] = useState<string>('');
   const [editLengthField, setEditLengthField] = useState<string>('');
+  const [editLengthOverwrite, setEditLengthOverwrite] = useState<boolean>(false);
   const [editType, setEditType] = useState<string>('reuse');
   const [editJoint, setEditJoint] = useState<string>("joint");
   const [editStation, setEditStation] = useState<string>('');
@@ -1254,6 +1256,7 @@ function App() {
       if (editLength !== '' && !isNaN(parsedLength)) input.length = parsedLength;
       const parsedLengthField = parseFloat(editLengthField);
       input.lengthfield = editLengthField !== '' && !isNaN(parsedLengthField) ? parsedLengthField : null;
+      input.lengthoverwrite = editLengthOverwrite;
 
       console.log('Updating via GraphQL:', input);
       const result = await (client as any).graphql({ query: mutation, variables: { input } });
@@ -1330,7 +1333,7 @@ function App() {
       const page: { data: LenPoint[] | null; nextToken?: string | null } =
         await client.models.Location.list({
           ...(track != null && { filter: { track: { eq: track } } }),
-          selectionSet: ['id', 'track', 'date', 'time', 'lat', 'lng', 'length', 'station', 'lengthfield'],
+          selectionSet: ['id', 'track', 'date', 'time', 'lat', 'lng', 'length', 'station', 'lengthfield', 'lengthoverwrite'],
           limit: 1000,
           nextToken: token,
         });
@@ -1369,9 +1372,11 @@ function App() {
   // point's station value| (2 dp). If either station is missing or unreadable
   // the point gets 0. badStation marks a point whose OWN station is unreadable;
   // afterBad marks a point that got 0 only because the one before it was.
+  // locked marks a point with lengthoverwrite set, whose stored Length-Field is
+  // left alone - it still supplies the station the next point measures from.
   function computeTrackFieldLengths(points: LenPoint[]): {
     id: string; lengthfield: number; old: number | null;
-    badStation: boolean; afterBad: boolean; point: LenPoint;
+    badStation: boolean; afterBad: boolean; locked: boolean; point: LenPoint;
   }[] {
     const out: ReturnType<typeof computeTrackFieldLengths> = [];
     let prevValue: number | null = null;
@@ -1389,7 +1394,8 @@ function App() {
       }
       out.push({
         id: p.id, lengthfield, old: p.lengthfield ?? null,
-        badStation: value == null, afterBad, point: p,
+        badStation: value == null, afterBad,
+        locked: p.lengthoverwrite === true, point: p,
       });
       prevValue = value;
       first = false;
@@ -1470,9 +1476,12 @@ function App() {
       let afterBad = 0;
       let unchanged = 0;
       let considered = 0;
+      let locked = 0;
       for (const t of trackNos) {
         for (const r of computeTrackFieldLengths(byTrack[t])) {
           considered++;
+          // Length Overwrite ticked: leave this point's Length-Field as it is.
+          if (r.locked) { locked++; continue; }
           if (r.badStation) badStations.push(r.point);
           if (r.afterBad) afterBad++;
           if (r.old === r.lengthfield) unchanged++;
@@ -1499,6 +1508,7 @@ function App() {
         `Updated ${Object.keys(saved).length}, already correct ${unchanged}.`,
       ];
       if (notLine) lines.push(`Skipped ${notLine} point(s) not on a line track.`);
+      if (locked) lines.push(`Left ${locked} point(s) alone (Length Overwrite ticked).`);
       if (badStations.length) {
         lines.push('', `${badStations.length} point(s) have a missing or unreadable station, so their Length-Field was set to 0:`);
         for (const p of badStations.slice(0, 10)) {
@@ -2306,6 +2316,7 @@ function App() {
       setEditWidth(match?.width != null ? String(match.width) : '');
       setEditLength(match?.length != null ? String(match.length) : '');
       setEditLengthField(match?.lengthfield != null ? String(match.lengthfield) : '');
+      setEditLengthOverwrite(match?.lengthoverwrite === true);
       setEditType(props.type ?? 'reuse');
       setEditJoint(typeof match?.joint === 'string' ? match.joint : 'joint');
       setEditStation(match?.station ?? '');
@@ -2880,6 +2891,17 @@ function App() {
                                   value={editLengthField}
                                   onChange={e => setEditLengthField(e.target.value)}
                                   style={{ fontSize: '11px', padding: '2px 4px', width: '100%' }}
+                                />
+                              </td>
+                            </tr>
+                            <tr>
+                              <td>Length Overwrite</td>
+                              <td>
+                                <input
+                                  aria-label="Length Overwrite"
+                                  type="checkbox"
+                                  checked={editLengthOverwrite}
+                                  onChange={e => setEditLengthOverwrite(e.target.checked)}
                                 />
                               </td>
                             </tr>
