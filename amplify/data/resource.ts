@@ -20,6 +20,7 @@ const schema = a.schema({
       diameter: a.float(),
       length: a.float().required(),
       lengthfield:a.float(),
+      lengthoverwrite: a.boolean(),
       lat: a.float().required(),
       lng: a.float().required(),
       username: a.string(),
