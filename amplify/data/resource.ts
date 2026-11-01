@@ -141,7 +141,10 @@ export const data = defineData({
     defaultAuthorizationMode: "apiKey",
     // API Key is used for a.allow.public() rules
     apiKeyAuthorizationMode: {
-      expiresInDays: 30,
+      // 365 is the maximum AWS allows. The key still expires, so the backend
+      // must be redeployed at least once a year or every query starts failing
+      // with UnauthorizedException and the app shows no data.
+      expiresInDays: 365,
     },
   },
 });
